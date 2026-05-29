@@ -1,0 +1,256 @@
+---
+title: "Composio Sessions: Per-User Agent Runtime Context"
+sidebarTitle: "Sessions"
+description: "Sessions scope all tool access, authentication, and MCP state to a single user. Learn how to create sessions and configure tools, auth, and workbench settings."
+---
+
+A **session** is the central primitive in Composio. It binds a user ID to a runtime context that contains tool access, authentication state, an MCP endpoint, and execution logs. Every tool call, connected account lookup, and workbench operation runs inside this scoped context — keeping one user's data cleanly isolated from another's.
+
+## Creating a session
+
+Pass your user ID to `composio.create()` to open a new session. Every call returns a fresh session ID. Use the same session ID across turns of a conversation to preserve tool and workbench state.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+    const session = await composio.create("user_123");
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+
+    composio = Composio(api_key="your_api_key")
+
+    session = composio.create(user_id="user_123")
+    ```
+  </Tab>
+</Tabs>
+
+To resume an existing session in a later turn, use `composio.use()` instead of `create()`:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const session = await composio.use("existing_session_id");
+    const tools = await session.tools();
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    session = composio.use("existing_session_id")
+    tools = session.tools()
+    ```
+  </Tab>
+</Tabs>
+
+## Getting tools from a session
+
+Call `session.tools()` to retrieve provider-wrapped tools ready to pass into your AI framework. By default, this returns the session's meta tools (`COMPOSIO_SEARCH_TOOLS`, `COMPOSIO_MANAGE_CONNECTIONS`, etc.) plus any preloaded tools you configured.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Default: meta tools only
+    const tools = await session.tools();
+
+    // Preload specific tools at session creation
+    const session = await composio.create("user_123", {
+      toolkits: ["gmail", "github"],
+      preload: {
+        tools: ["GMAIL_FETCH_EMAILS", "GITHUB_CREATE_ISSUE"],
+      },
+    });
+
+    const tools = await session.tools();
+    // Returns preloaded tools + meta tools
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    # Default: meta tools only
+    tools = session.tools()
+
+    # Preload specific tools at session creation
+    session = composio.create(
+        user_id="user_123",
+        toolkits=["gmail", "github"],
+        preload={
+            "tools": ["GMAIL_FETCH_EMAILS", "GITHUB_CREATE_ISSUE"],
+        },
+    )
+
+    tools = session.tools()
+    # Returns preloaded tools + meta tools
+    ```
+  </Tab>
+</Tabs>
+
+You can also restrict the session to a specific set of toolkits to limit what the agent can discover:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const session = await composio.create("user_123", {
+      toolkits: ["gmail", "slack"],
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    session = composio.create(
+        user_id="user_123",
+        toolkits=["gmail", "slack"],
+    )
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Keep preloaded tool sets small (fewer than 20 tools) to avoid bloating the model's context window. Let the agent use `COMPOSIO_SEARCH_TOOLS` to discover additional tools at runtime.
+</Tip>
+
+## Session MCP endpoint
+
+Every session exposes a remote MCP server. Any MCP-compatible client — Claude Desktop, Cursor, or your own MCP client — can connect to it using the session URL and your API key as the auth header.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const session = await composio.create("user_123");
+
+    const mcpUrl = session.mcp.url;
+    const mcpHeaders = session.mcp.headers;
+
+    console.log(mcpUrl);
+    // e.g. https://mcp.composio.dev/session/sess_abc123
+    console.log(mcpHeaders);
+    // { Authorization: "Bearer <your_api_key>" }
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    session = composio.create(user_id="user_123")
+
+    mcp_url = session.mcp.url
+    mcp_headers = session.mcp.headers
+
+    print(mcp_url)
+    # e.g. https://mcp.composio.dev/session/sess_abc123
+    print(mcp_headers)
+    # { "Authorization": "Bearer <your_api_key>" }
+    ```
+  </Tab>
+</Tabs>
+
+Pass `mcp_url` and `mcp_headers` to any MCP client — both `url` and native tools point at the same session context, so tool calls, auth, and workbench state are shared regardless of which access method you use.
+
+<Note>
+  See [MCP guide](/guides/mcp) for provider-specific setup instructions (Claude Desktop, Cursor, Vercel AI SDK, etc.).
+</Note>
+
+## Generating a connect link from a session
+
+Use `session.authorize()` when you want to authenticate a user to a toolkit programmatically — for example, during onboarding or from a settings page.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const connectionRequest = await session.authorize("github", {
+      callbackUrl: "https://myapp.com/callback",
+    });
+
+    console.log(connectionRequest.redirectUrl);
+    // Send this URL to the user
+
+    const connectedAccount = await connectionRequest.waitForConnection();
+    console.log(connectedAccount.status); // "ACTIVE"
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    connection_request = session.authorize("github")
+
+    print(connection_request.redirect_url)
+    # Send this URL to the user
+
+    connected_account = connection_request.wait_for_connection()
+    print(connected_account.status)  # "ACTIVE"
+    ```
+  </Tab>
+</Tabs>
+
+## User IDs
+
+User IDs are arbitrary strings you define. Composio stores connected accounts and tool-execution history under this ID, so consistent, unique IDs are essential.
+
+| Practice | Recommendation |
+|---|---|
+| **Recommended** | Database UUID or primary key (`user.id`) |
+| **Acceptable** | Unique username (`user.username`) |
+| **Avoid** | Email addresses — they can change and may be reassigned |
+| **Never in production** | `"default"` — routes all users to the same connected accounts |
+
+<Warning>
+  Using `"default"` as a user ID in production means every user shares the same connected accounts. This is a serious data-isolation issue. Use a stable, unique identifier from your database instead.
+</Warning>
+
+A single user ID can have multiple connected accounts for the same toolkit (for example, a work Gmail and a personal Gmail). To specify which account to use in a session, pass it via `connectedAccounts`:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const session = await composio.create("user_123", {
+      connectedAccounts: {
+        gmail: ["ca_work_gmail"],
+        github: ["ca_personal_github"],
+      },
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    session = composio.create(
+        user_id="user_123",
+        connected_accounts={
+            "gmail": ["ca_work_gmail"],
+            "github": ["ca_personal_github"],
+        },
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Session vs. direct access
+
+Sessions and the direct `composio.tools.get()` method serve different needs:
+
+| | Session (`composio.create()`) | Direct (`composio.tools.get()`) |
+|---|---|---|
+| **Scope** | Scoped to a single user ID | Any user ID you pass per call |
+| **Meta tools** | Included by default | Not included |
+| **MCP endpoint** | Provided via `session.mcp` | Not available |
+| **Workbench** | Included by default | Not available |
+| **Auth flow** | Managed by `COMPOSIO_MANAGE_CONNECTIONS` | Manual via `connectedAccounts.link()` |
+| **Best for** | Agentic chat and multi-turn conversations | Direct tool execution, scripting, batch jobs |
+
+Use sessions for any agentic or conversational flow. Use `composio.tools.get()` when you want to call a specific tool directly without the session overhead.
+
+<CardGroup cols={2}>
+  <Card title="Authentication" href="/concepts/authentication">
+    Auth configs, Connect Links, and OAuth token management
+  </Card>
+  <Card title="Connected Accounts" href="/concepts/connected-accounts">
+    Listing, creating, and managing per-user credentials
+  </Card>
+  <Card title="Tools & Toolkits" href="/concepts/tools-and-toolkits">
+    Discovering, filtering, and executing tools directly
+  </Card>
+  <Card title="MCP Guide" href="/guides/mcp">
+    Connecting MCP clients to a Composio session
+  </Card>
+</CardGroup>

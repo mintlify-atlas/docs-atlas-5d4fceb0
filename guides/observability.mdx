@@ -1,0 +1,240 @@
+---
+title: "Observability: Logs, Usage, and Tool Execution Tracking"
+sidebarTitle: "Observability"
+description: "Monitor tool execution, usage metrics, and error rates for your Composio agents. Access logs per session and track API usage from the dashboard."
+---
+
+Composio provides built-in observability for tool execution. Every tool call is logged with its inputs, outputs, user ID, session ID, duration, and status. You can access these logs per session, per user, or across your entire project — either from the Composio dashboard or programmatically via the Logs API. Usage metrics are available separately for aggregated reporting and billing integrations.
+
+## Execution logs
+
+Every tool call Composio executes generates a structured log entry. You can find logs in the **Composio dashboard → Logs** section, or query them via the REST API.
+
+Each log entry contains:
+
+| Field | Description |
+|---|---|
+| `id` | Unique log identifier (e.g. `log_-jRTWClpBoVo`) |
+| `timestamp` | ISO 8601 timestamp of when the tool was called |
+| `tool_slug` | The specific tool that was executed (e.g. `GMAIL_SEND_EMAIL`) |
+| `toolkit_slug` | The toolkit the tool belongs to (e.g. `gmail`) |
+| `user_id` | The user on whose behalf the tool was called |
+| `session_id` | The session the call was routed through |
+| `status` | `success` or `failed` |
+| `duration_ms` | Execution time in milliseconds |
+| `data` | Full request payload and response body |
+
+Use the dashboard to search and filter by toolkit, user, status, and time range. For programmatic access, use the Logs API:
+
+```bash
+curl -X POST https://backend.composio.dev/api/v3.1/logs/tool_execution \
+  -H "x-api-key: YOUR_PROJECT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "limit": 20,
+    "time_range": {
+      "from": 1744848000000,
+      "to": 1744934400000
+    },
+    "filters": [
+      { "field": "toolkit_slug", "operator": "==", "value": "gmail" },
+      { "field": "status", "operator": "==", "value": "failed" }
+    ]
+  }'
+```
+
+The response includes a `next_cursor` for pagination and a `logs` array:
+
+```json
+{
+  "logs": [
+    {
+      "id": "log_-jRTWClpBoVo",
+      "timestamp": "2026-04-17T10:25:00.000Z",
+      "type": "tool.execution",
+      "status": "failed",
+      "level": "error",
+      "message": "GMAIL_SEND_EMAIL failed: invalid recipient",
+      "metadata": {
+        "tool_slug": "GMAIL_SEND_EMAIL",
+        "toolkit_slug": "gmail",
+        "user_id": "user_123",
+        "session_id": "ses_abc123"
+      },
+      "metrics": { "duration_ms": 202 }
+    }
+  ],
+  "next_cursor": "eyJwYWdlIjoyfQ=="
+}
+```
+
+To fetch the full request/response payload for a specific log:
+
+```bash
+curl https://backend.composio.dev/api/v3.1/logs/tool_execution/log_-jRTWClpBoVo \
+  -H "x-api-key: YOUR_PROJECT_API_KEY"
+```
+
+The detail response adds `data` (full request and response bodies), `timings` (start and end epoch ms), `context` (trace ID, request ID), and `source` (framework, language, host).
+
+## SDK logging
+
+Enable debug logging in the SDK to trace what the SDK is doing locally — session creation, tool resolution, serialization, and API calls:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio, logger } from "@composio/core";
+
+// Set log level: 'debug' | 'info' | 'warn' | 'error' | 'silent'
+logger.setLevel("debug");
+
+const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+const session = await composio.create("user_123");
+// SDK will now print detailed logs to stdout
+```
+</Tab>
+<Tab value="Python">
+```python
+import logging
+from composio import Composio
+
+# Enable debug output for the composio logger
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("composio").setLevel(logging.DEBUG)
+
+composio = Composio(api_key="your_api_key")
+session = composio.create(user_id="user_123")
+# SDK will now print detailed logs to stdout
+```
+</Tab>
+</Tabs>
+
+<Info>
+SDK-level debug logs are for local development and troubleshooting only. They are not sent to Composio's servers. Production tool execution logs are always available in the dashboard regardless of SDK log level.
+</Info>
+
+## Usage metrics
+
+The Composio dashboard provides aggregated usage metrics across your project:
+
+- **Tool call counts** — total calls per tool, toolkit, user, and session
+- **Error rates** — percentage of failed calls per toolkit and time period
+- **Latency percentiles** — p50, p95, p99 execution times per tool
+- **Active users** — unique user IDs that triggered tool calls in a window
+- **Session counts** — number of sessions created per day
+
+For programmatic access, use the Usage API:
+
+```bash
+# Get a usage summary for the last 7 days
+curl -X POST https://backend.composio.dev/api/v3.1/project/usage/summary \
+  -H "x-api-key: YOUR_PROJECT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "time_range": {
+      "from": 1744243200000,
+      "to": 1744848000000
+    }
+  }'
+```
+
+Break down usage by entity:
+
+```bash
+# Break down by toolkit
+curl -X POST https://backend.composio.dev/api/v3.1/project/usage/toolkit \
+  -H "x-api-key: YOUR_PROJECT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "limit": 10 }'
+
+# Break down by user
+curl -X POST https://backend.composio.dev/api/v3.1/project/usage/user \
+  -H "x-api-key: YOUR_PROJECT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "limit": 10 }'
+```
+
+## Debugging tool failures
+
+When a tool call fails, the log entry's `data` field contains the full request payload and error response from the upstream API. Common failure patterns:
+
+| Error pattern | Likely cause |
+|---|---|
+| `401 Unauthorized` from upstream API | User's connected account token has expired or been revoked |
+| `403 Forbidden` | The OAuth scopes granted don't include the required permission |
+| `422 Unprocessable Entity` | Tool input validation failed — check the `data.request` payload |
+| `Tool not found` | The tool slug is misspelled or not available in the session |
+| `No connected account` | The user hasn't authenticated with the required toolkit |
+
+Inspect a specific failure by fetching the full log:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+// After a failed tool execution, the error is returned in the response
+const result = await session.execute("GMAIL_SEND_EMAIL", {
+  to: "alice@example.com",
+  subject: "Hello",
+  body: "Test",
+});
+
+if (result.error) {
+  console.error("Tool failed:", result.error);
+  console.log("Log ID:", result.logId);
+  // Use result.logId to fetch the full log from the dashboard or Logs API
+}
+```
+</Tab>
+<Tab value="Python">
+```python
+# After a failed tool execution, the error is returned in the response
+result = session.execute(
+    "GMAIL_SEND_EMAIL",
+    arguments={
+        "to": "alice@example.com",
+        "subject": "Hello",
+        "body": "Test",
+    },
+)
+
+if result.error:
+    print("Tool failed:", result.error)
+    print("Log ID:", result.log_id)
+    # Use result.log_id to fetch the full log from the dashboard or Logs API
+```
+</Tab>
+</Tabs>
+
+You can filter the Logs API for all failures belonging to a specific user to investigate patterns:
+
+```bash
+curl -X POST https://backend.composio.dev/api/v3.1/logs/tool_execution \
+  -H "x-api-key: YOUR_PROJECT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filters": [
+      { "field": "user_id", "operator": "==", "value": "user_123" },
+      { "field": "status", "operator": "==", "value": "failed" }
+    ]
+  }'
+```
+
+<Note>
+For full Logs API filter fields, operators, and pagination parameters, see the [Tools API reference](/reference/ts/tools).
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Tools and Toolkits" href="/concepts/tools-and-toolkits">
+    Understand how tools execute inside sessions
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    How session IDs and user IDs appear in log metadata
+  </Card>
+  <Card title="Authenticating Users" href="/guides/authenticating-users">
+    Fix connection errors by re-authorizing the user's toolkit
+  </Card>
+  <Card title="TypeScript SDK Reference" href="/reference/ts/tools">
+    Full Tools API reference including execute response types
+  </Card>
+</CardGroup>

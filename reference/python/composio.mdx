@@ -1,0 +1,175 @@
+---
+title: "Composio Python SDK Reference"
+sidebarTitle: "Composio"
+description: "The Composio class is the entry point for the Python SDK. Initialize with an API key and optional provider to access tools, connected accounts, triggers, and MCP."
+---
+
+The `Composio` class is the root entry point for the Composio Python SDK. Initialize it with your API key and optional provider, then access tools, connected accounts, auth configs, triggers, and MCP through its attributes. By default the SDK uses OpenAI as its provider, but you can pass any supported provider to get correctly-typed tool collections for your framework.
+
+## Installation
+
+<CodeGroup>
+
+```bash pip
+pip install composio
+```
+
+```bash uv
+uv add composio
+```
+
+</CodeGroup>
+
+## Import
+
+```python
+from composio import Composio
+```
+
+## Constructor
+
+```python
+Composio(
+    provider: BaseProvider | None = None,
+    *,
+    api_key: str | None = None,
+    environment: str = "production",
+    base_url: str | None = None,
+    timeout: int | None = None,
+    max_retries: int = 3,
+    allow_tracking: bool = True,
+    dangerously_allow_auto_upload_download_files: bool = False,
+    sensitive_file_upload_protection: bool = True,
+    file_upload_path_deny_segments: Sequence[str] | None = None,
+    file_upload_dirs: Sequence[str] | Literal[False] | None = None,
+    file_download_dir: str | None = None,
+    toolkit_versions: ToolkitVersionParam = None,
+)
+```
+
+`api_key` falls back to the `COMPOSIO_API_KEY` environment variable when not explicitly provided. An `ApiKeyNotProvidedError` is raised at construction time if neither source supplies a key.
+
+### Parameters
+
+<ParamField path="api_key" type="str" optional>
+  Your Composio project API key. Defaults to the `COMPOSIO_API_KEY` environment variable. Get yours from [composio.dev](https://composio.dev) → Settings → API Keys.
+</ParamField>
+
+<ParamField path="provider" type="BaseProvider" optional>
+  The AI framework provider used to wrap tool schemas. Defaults to `OpenAIProvider()`, which returns `list[ChatCompletionToolParam]`. Pass `AnthropicProvider()`, a LangChain provider, or any custom `BaseProvider` subclass to get correctly-typed collections for your framework.
+</ParamField>
+
+<ParamField path="environment" type="str" optional>
+  Target environment. Accepts `"production"` (default) or `"staging"`.
+</ParamField>
+
+<ParamField path="base_url" type="str" optional>
+  Override the API base URL. Useful for self-hosted deployments or local proxies.
+</ParamField>
+
+<ParamField path="timeout" type="int" optional>
+  Per-request timeout in seconds. Falls back to the HTTP client default when omitted.
+</ParamField>
+
+<ParamField path="max_retries" type="int" optional>
+  Number of automatic retries on transient failures. Default is `3`.
+</ParamField>
+
+<ParamField path="allow_tracking" type="bool" optional>
+  Enable anonymous usage telemetry. Default is `True`. Set to `False` to opt out.
+</ParamField>
+
+<ParamField path="dangerously_allow_auto_upload_download_files" type="bool" optional>
+  Master opt-in for automatic file staging. When `False` (default), file-uploadable arguments are forwarded as-is — the backend expects a pre-staged descriptor. Set to `True` to let the SDK read local paths and stage them to object storage on your behalf at execute time.
+</ParamField>
+
+<ParamField path="sensitive_file_upload_protection" type="bool" optional>
+  When `True` (default), the SDK blocks local paths that match a built-in denylist of sensitive segments (`.ssh`, `.aws`, credential-like filenames, etc.) before uploading. Disable only if you accept the risk.
+</ParamField>
+
+<ParamField path="file_upload_path_deny_segments" type="Sequence[str]" optional>
+  Extra path segment names merged into the built-in sensitive-path denylist. Useful for blocking custom directories like `secrets` or `private`.
+</ParamField>
+
+<ParamField path="file_upload_dirs" type="Sequence[str] | False | None" optional>
+  Allowlist of directories the SDK may read from during automatic file upload (only consulted when `dangerously_allow_auto_upload_download_files=True`).
+
+  - `None` (default) — allows `~/.composio/temp`
+  - `False` or `[]` — rejects all local paths; URLs and in-memory bytes still work
+  - `Sequence[str]` — use as the allowlist, **replacing** the default (include `~/.composio/temp` explicitly if needed)
+</ParamField>
+
+<ParamField path="file_download_dir" type="str" optional>
+  Directory where files from tool responses marked `file_downloadable` are streamed. Defaults to `~/.composio/files`.
+</ParamField>
+
+<ParamField path="toolkit_versions" type="ToolkitVersionParam" optional>
+  Pin toolkit versions globally or per-toolkit.
+
+  - `None` (default) — uses `"latest"` for all toolkits
+  - `"latest"` — explicit string alias for the default
+  - `"20250906_01"` — use this version string for all toolkits
+  - `{"github": "20250906_01", "gmail": "latest"}` — per-toolkit pinning
+</ParamField>
+
+## Attributes
+
+| Attribute | Type | Description |
+|---|---|---|
+| `tools` | `Tools` | Fetch provider-wrapped tool schemas and execute tools directly. |
+| `toolkits` | `Toolkits` | List and inspect available toolkits. |
+| `connected_accounts` | `ConnectedAccounts` | Manage user OAuth connections and API key auth. |
+| `auth_configs` | `AuthConfigs` | Create and manage custom OAuth apps and auth settings. |
+| `triggers` | `Triggers` | Subscribe to real-time events from connected apps. |
+| `mcp` | `MCP` | Access Model Context Protocol resources. |
+
+## `composio.create()`
+
+```python
+composio.create(user_id: str) -> SessionContext
+```
+
+Create a tool-router session for the given user. The returned `SessionContext` scopes tool fetching and execution to that user and provides a high-level interface for agentic loops.
+
+```python
+session = composio.create(user_id="user_123")
+tools = session.get_tools(toolkits=["github"])
+```
+
+## Complete initialization example
+
+```python
+import os
+from composio import Composio
+from composio.core.provider._openai import OpenAIProvider
+
+composio = Composio(
+    api_key=os.environ["COMPOSIO_API_KEY"],
+    provider=OpenAIProvider(),          # default; explicit for clarity
+    environment="production",
+    max_retries=3,
+    toolkit_versions={
+        "github": "20250906_01",        # pin GitHub toolkit
+        "gmail": "latest",              # always latest for Gmail
+    },
+    dangerously_allow_auto_upload_download_files=True,
+    file_upload_dirs=["/srv/agent/uploads", "~/.composio/temp"],
+    file_download_dir="/srv/agent/downloads",
+    allow_tracking=False,
+)
+
+# Access sub-resources
+tools       = composio.tools
+accounts    = composio.connected_accounts
+auth_cfgs   = composio.auth_configs
+triggers    = composio.triggers
+mcp         = composio.mcp
+```
+
+<Note>
+  For most use cases you only need `api_key`. All other parameters are optional overrides.
+</Note>
+
+<Warning>
+  Never hard-code your API key in source code or commit it to version control. Always load it from an environment variable or a secrets manager.
+</Warning>

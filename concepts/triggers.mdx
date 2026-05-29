@@ -1,0 +1,409 @@
+---
+title: "Triggers: Real-Time Webhook Events from Connected Apps"
+sidebarTitle: "Triggers"
+description: "Triggers fire when events happen in connected apps — a new email, a GitHub PR, a Slack message. Subscribe with a callback and react in real time."
+---
+
+Triggers let your agent react to real-world events from connected apps in real time. When a trigger fires — a new email arrives, a GitHub PR is opened, a Slack message is sent — Composio delivers the event payload to your webhook endpoint or SDK subscription. Your code then decides what to do: run an agent, send a notification, update a database, or anything else.
+
+<Note>
+  Triggers require an active connected account for the user whose events you want to monitor. Make sure the user has authenticated with the relevant toolkit before creating a trigger.
+</Note>
+
+## Creating a trigger
+
+First, inspect the trigger type to see what configuration it requires. Then create a trigger instance for a user's connected account.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+    // Inspect the trigger to see required config fields
+    const triggerType = await composio.triggers.getType("GITHUB_COMMIT_EVENT");
+    console.log(triggerType.config);
+    // { properties: { owner: {...}, repo: {...} }, required: ["owner", "repo"] }
+
+    // Create the trigger for a user
+    const trigger = await composio.triggers.create(
+      "user_123",
+      "GITHUB_COMMIT_EVENT",
+      {
+        triggerConfig: {
+          owner: "my-org",
+          repo: "my-repo",
+        },
+      }
+    );
+
+    console.log(trigger.triggerId); // "ti_abc123"
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+
+    composio = Composio(api_key="your_api_key")
+
+    # Inspect the trigger to see required config fields
+    trigger_type = composio.triggers.get_type("GITHUB_COMMIT_EVENT")
+    print(trigger_type.config)
+    # { "properties": { "owner": {...}, "repo": {...} }, "required": ["owner", "repo"] }
+
+    # Create the trigger for a user
+    trigger = composio.triggers.create(
+        user_id="user_123",
+        slug="GITHUB_COMMIT_EVENT",
+        trigger_config={
+            "owner": "my-org",
+            "repo": "my-repo",
+        },
+    )
+
+    print(trigger.trigger_id)  # "ti_abc123"
+    ```
+  </Tab>
+</Tabs>
+
+When you pass a `userId`, Composio automatically finds the user's connected account for the relevant toolkit. If the user has multiple connected accounts for the same toolkit, the most recently created one is used. You can also pass a `connectedAccountId` directly for explicit control.
+
+## Subscribing to triggers
+
+Composio delivers trigger events in two ways: **webhooks** (recommended for production) and **SDK subscriptions** (useful for local development and testing).
+
+### Webhooks
+
+Register a publicly accessible webhook endpoint to receive events in production:
+
+```bash
+curl -X POST https://backend.composio.dev/api/v3.1/webhook_subscriptions \
+  -H "X-API-KEY: your-composio-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "webhook_url": "https://myapp.com/webhook",
+    "enabled_events": ["composio.trigger.message"]
+  }'
+```
+
+Then handle the incoming events in your server:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Example: Express.js webhook handler
+    import express from 'express';
+
+    const app = express();
+    app.use(express.json());
+
+    app.post('/webhook', async (req, res) => {
+      const payload = req.body;
+
+      if (payload.type === 'composio.trigger.message') {
+        const triggerSlug = payload.metadata.trigger_slug;
+        const eventData = payload.data;
+
+        if (triggerSlug === 'GITHUB_COMMIT_EVENT') {
+          console.log(`New commit by ${eventData.author}: ${eventData.message}`);
+          // Run your agent, update your database, etc.
+        }
+
+        if (triggerSlug === 'GMAIL_NEW_EMAIL') {
+          console.log(`New email from: ${eventData.from}`);
+        }
+      }
+
+      res.status(200).json({ status: 'ok' });
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from fastapi import FastAPI, Request
+    from composio import WebhookEventType
+
+    app = FastAPI()
+
+    @app.post("/webhook")
+    async def webhook_handler(request: Request):
+        payload = await request.json()
+        event_type = payload.get("type")
+
+        if event_type == WebhookEventType.TRIGGER_MESSAGE:
+            trigger_slug = payload["metadata"]["trigger_slug"]
+            event_data = payload["data"]
+
+            if trigger_slug == "GITHUB_COMMIT_EVENT":
+                print(f"New commit by {event_data['author']}: {event_data['message']}")
+                # Run your agent, update your database, etc.
+
+            if trigger_slug == "GMAIL_NEW_EMAIL":
+                print(f"New email from: {event_data['from']}")
+
+        return {"status": "ok"}
+    ```
+  </Tab>
+</Tabs>
+
+### SDK subscriptions (development)
+
+Use SDK subscriptions to receive events without a public webhook URL — useful for local development and testing. Events are delivered over a WebSocket connection.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+    // Subscribe to all triggers
+    await composio.triggers.subscribe(
+      (data) => {
+        console.log('Trigger received:', data.triggerSlug);
+        console.log('User:', data.userId);
+        console.log('Payload:', data.payload);
+      }
+    );
+
+    // Subscribe with filters
+    await composio.triggers.subscribe(
+      (data) => {
+        console.log('New email received for:', data.userId);
+        // Process the email event...
+      },
+      {
+        triggerSlug: ["GMAIL_NEW_EMAIL"],
+        userId: "user_123",
+      }
+    );
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+
+    composio = Composio(api_key="your_api_key")
+
+    subscription = composio.triggers.subscribe()
+
+    @subscription.handle(trigger_slug="GMAIL_NEW_EMAIL", user_id="user_123")
+    def handle_email(data):
+        print(f"New email received for: {data.user_id}")
+        print(f"Payload: {data.payload}")
+        # Process the email event...
+
+    subscription.wait_forever()
+    ```
+  </Tab>
+</Tabs>
+
+## Trigger event payload
+
+Every trigger event carries a normalized payload. For webhook deliveries, the V3 format separates event metadata from the app-specific data:
+
+```json
+{
+  "id": "msg_abc123",
+  "type": "composio.trigger.message",
+  "timestamp": "2026-01-15T10:30:00Z",
+  "metadata": {
+    "log_id": "log_abc123",
+    "trigger_slug": "GITHUB_COMMIT_EVENT",
+    "trigger_id": "ti_xyz789",
+    "connected_account_id": "ca_def456",
+    "auth_config_id": "ac_xyz789",
+    "user_id": "user_123"
+  },
+  "data": {
+    "commit_sha": "a1b2c3d",
+    "message": "fix: resolve null pointer",
+    "author": "jane"
+  }
+}
+```
+
+For SDK subscriptions, the event is delivered as an `IncomingTriggerPayload`:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Unique trigger instance ID |
+| `triggerSlug` | `string` | The trigger type (e.g., `GITHUB_COMMIT_EVENT`) |
+| `toolkitSlug` | `string` | The toolkit the event came from (e.g., `GITHUB`) |
+| `userId` | `string` | Your user ID associated with this event |
+| `payload` | `Record<string, unknown>` | App-specific event data |
+| `metadata.connectedAccount.id` | `string` | The connected account that fired the event |
+| `metadata.authConfigId` | `string` | The auth config used for this connection |
+
+To know exactly what fields will be in `payload` / `data` for a trigger type, inspect its schema:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const triggerType = await composio.triggers.getType("GITHUB_COMMIT_EVENT");
+    console.log(triggerType.payload);
+    // { properties: { author: {...}, message: {...}, commit_sha: {...} } }
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    trigger_type = composio.triggers.get_type("GITHUB_COMMIT_EVENT")
+    print(trigger_type.payload)
+    # { "properties": { "author": {...}, "message": {...}, "commit_sha": {...} } }
+    ```
+  </Tab>
+</Tabs>
+
+## Available triggers
+
+Triggers are available for all toolkits that support webhooks or polling. Some common examples:
+
+| Trigger slug | App | Description |
+|---|---|---|
+| `GMAIL_NEW_EMAIL` | Gmail | Fires when a new email is received |
+| `GITHUB_COMMIT_EVENT` | GitHub | Fires on every new commit to a repository |
+| `GITHUB_PULL_REQUEST_EVENT` | GitHub | Fires when a PR is opened, updated, or merged |
+| `SLACK_NEW_MESSAGE` | Slack | Fires when a new message is posted in a channel |
+| `SLACK_NEW_DIRECT_MESSAGE` | Slack | Fires when a direct message is received |
+| `NOTION_PAGE_UPDATED` | Notion | Fires when a Notion page is modified |
+| `LINEAR_ISSUE_CREATED` | Linear | Fires when a new issue is created |
+
+List all available trigger types for a toolkit:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const triggerTypes = await composio.triggers.listTypes({
+      toolkits: ["github"],
+    });
+
+    triggerTypes.items.forEach((t) => {
+      console.log(t.slug, '-', t.description);
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    trigger_types = composio.triggers.list_types(toolkits=["github"])
+
+    for t in trigger_types.items:
+        print(t.slug, '-', t.description)
+    ```
+  </Tab>
+</Tabs>
+
+## Managing triggers
+
+### Listing active triggers
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const active = await composio.triggers.listActive({
+      connectedAccountIds: ["ca_def456"],
+    });
+
+    for (const trigger of active.items) {
+      console.log(`${trigger.id} (${trigger.triggerName})`);
+    }
+
+    // Paginate
+    if (active.nextCursor) {
+      const nextPage = await composio.triggers.listActive({
+        cursor: active.nextCursor,
+      });
+    }
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    active = composio.triggers.list_active(
+        connected_account_ids=["ca_def456"],
+    )
+
+    for trigger in active.items:
+        print(f"{trigger.id} ({trigger.trigger_name})")
+
+    # Paginate
+    if active.next_cursor:
+        next_page = composio.triggers.list_active(cursor=active.next_cursor)
+    ```
+  </Tab>
+</Tabs>
+
+### Enabling and disabling triggers
+
+Pause a trigger without deleting it — useful for temporarily stopping event delivery:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Disable a trigger
+    await composio.triggers.disable("ti_abc123");
+
+    // Re-enable when needed
+    await composio.triggers.enable("ti_abc123");
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    # Disable a trigger
+    composio.triggers.disable(trigger_id="ti_abc123")
+
+    # Re-enable when needed
+    composio.triggers.enable(trigger_id="ti_abc123")
+    ```
+  </Tab>
+</Tabs>
+
+### Deleting a trigger
+
+Permanently remove a trigger instance. Use `disable()` instead if you may need it again.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    await composio.triggers.delete("ti_abc123");
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    composio.triggers.delete(trigger_id="ti_abc123")
+    ```
+  </Tab>
+</Tabs>
+
+### Unsubscribing (SDK subscriptions)
+
+Stop receiving events from an SDK subscription:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Unsubscribes the WebSocket connection for all active subscriptions
+    await composio.triggers.unsubscribe();
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    # Stop the subscription loop
+    subscription.stop()
+    ```
+  </Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Connected Accounts" href="/concepts/connected-accounts">
+    Set up the connections that trigger events come from
+  </Card>
+  <Card title="Authentication" href="/concepts/authentication">
+    Auth configs and Connect Links for user onboarding
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    Running agents in response to trigger events
+  </Card>
+  <Card title="Observability" href="/guides/observability">
+    Inspect trigger event logs and debug delivery issues
+  </Card>
+</CardGroup>

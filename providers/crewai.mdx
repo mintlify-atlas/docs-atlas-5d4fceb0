@@ -1,0 +1,135 @@
+---
+title: "Composio with CrewAI: Multi-Agent Tool Integration"
+sidebarTitle: "CrewAI"
+description: "Give CrewAI agents access to Composio's 1000+ tools. The CrewAI provider wraps Composio tools as BaseTool instances for use in any CrewAI crew or agent."
+---
+
+Composio's CrewAI provider wraps tools as `BaseTool` instances that CrewAI agents can use natively. Equip any agent in your crew with Composio tools — GitHub, Gmail, Slack, and 1000+ more — without writing custom tool wrappers. Composio handles authentication, schema conversion, and API execution transparently.
+
+<Note>
+  The CrewAI provider is Python-only. For TypeScript agent frameworks, see [LangChain](/providers/langchain) or [Mastra](/providers/mastra).
+</Note>
+
+## Installation
+
+```bash
+pip install composio composio-crewai crewai
+```
+
+Set your API keys in a `.env` file:
+
+```txt .env
+COMPOSIO_API_KEY=your_composio_api_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+## Example
+
+The following example creates a CrewAI agent with GitHub access and tasks it with starring a repository. The tools returned by Composio are passed directly to the `Agent` constructor — CrewAI handles tool invocation and Composio executes the underlying API calls.
+
+```python
+from crewai import Agent, Crew, Task
+from composio import Composio
+from composio_crewai import CrewAIProvider
+
+composio = Composio(provider=CrewAIProvider())
+
+# Tools are returned as a list of CrewAI BaseTool instances
+tools = composio.tools.get(user_id="default", toolkits=["GITHUB"])
+
+agent = Agent(
+    role="GitHub Agent",
+    goal="Take actions on GitHub using the GitHub API",
+    backstory=(
+        "You are an AI agent responsible for taking actions on GitHub "
+        "on the user's behalf using GitHub APIs."
+    ),
+    verbose=True,
+    tools=tools,
+    llm="gpt-4o-mini",
+)
+
+task = Task(
+    description=(
+        "Star the composiohq/composio repository on GitHub. "
+        "If successful, include 'Action executed successfully' in your response."
+    ),
+    agent=agent,
+    expected_output="Confirmation that the repository was starred",
+)
+
+crew = Crew(agents=[agent], tasks=[task])
+result = crew.kickoff()
+print(result)
+```
+
+## Multi-agent crews
+
+Give different agents in your crew different sets of Composio tools to create specialized, collaborative agents:
+
+```python
+from crewai import Agent, Crew, Task
+from composio import Composio
+from composio_crewai import CrewAIProvider
+
+composio = Composio(provider=CrewAIProvider())
+
+# Each agent gets its own toolset
+github_tools = composio.tools.get(user_id="default", toolkits=["GITHUB"])
+gmail_tools = composio.tools.get(user_id="default", toolkits=["GMAIL"])
+
+github_agent = Agent(
+    role="GitHub Agent",
+    goal="Manage GitHub repositories and issues",
+    backstory="You are a GitHub expert who manages repositories.",
+    tools=github_tools,
+    llm="gpt-4o-mini",
+)
+
+email_agent = Agent(
+    role="Email Agent",
+    goal="Send email notifications about GitHub activity",
+    backstory="You send email summaries of GitHub activity.",
+    tools=gmail_tools,
+    llm="gpt-4o-mini",
+)
+
+star_task = Task(
+    description="Star the composiohq/composio repository on GitHub.",
+    agent=github_agent,
+    expected_output="Confirmation that the repository was starred",
+)
+
+notify_task = Task(
+    description="Send an email to team@example.com summarizing what was done on GitHub today.",
+    agent=email_agent,
+    expected_output="Confirmation that the email was sent",
+)
+
+crew = Crew(
+    agents=[github_agent, email_agent],
+    tasks=[star_task, notify_task],
+)
+result = crew.kickoff()
+print(result)
+```
+
+## Filtering tools
+
+Pass a list of specific tool slugs to `composio.tools.get()` instead of entire toolkits to give agents only the tools they need:
+
+```python
+# Only the star repo and create issue tools — not the entire GitHub toolkit
+tools = composio.tools.get(
+    user_id="default",
+    tools=["GITHUB_STAR_REPO", "GITHUB_CREATE_ISSUE"],
+)
+```
+
+<Tip>
+  Limiting tools to only what an agent needs improves reliability — agents are less likely to pick the wrong tool when fewer options are available.
+</Tip>
+
+## How it works
+
+`CrewAIProvider` extends `AgenticProvider` and wraps each Composio tool as a `BaseTool` subclass. When CrewAI calls `tool._run(**kwargs)`, the wrapper executes the tool through Composio's API and returns the result. Pydantic validation errors are caught and returned as structured error objects so CrewAI can retry or report them cleanly.

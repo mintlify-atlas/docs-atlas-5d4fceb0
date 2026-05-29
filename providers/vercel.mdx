@@ -1,0 +1,144 @@
+---
+title: "Composio with Vercel AI SDK: Tool Integration"
+sidebarTitle: "Vercel AI SDK"
+description: "Use Composio tools with the Vercel AI SDK's generateText and streamText. The VercelProvider returns tools in Vercel's CoreTool format."
+---
+
+Composio's Vercel provider adapts tools to the Vercel AI SDK's `CoreTool` format, letting you pass Composio tools directly to `generateText()`, `streamText()`, and `generateObject()`. Tool execution is embedded inside each wrapped tool, so the Vercel AI SDK calls Composio automatically during the agentic loop.
+
+## Installation
+
+<CodeGroup>
+  ```bash npm
+  npm install @composio/core @composio/vercel ai
+  ```
+  ```bash yarn
+  yarn add @composio/core @composio/vercel ai
+  ```
+  ```bash pnpm
+  pnpm add @composio/core @composio/vercel ai
+  ```
+</CodeGroup>
+
+You'll also need a model provider package such as `@ai-sdk/openai`, `@ai-sdk/anthropic`, or `@ai-sdk/google`:
+
+<CodeGroup>
+  ```bash npm
+  npm install @ai-sdk/openai
+  ```
+  ```bash yarn
+  yarn add @ai-sdk/openai
+  ```
+  ```bash pnpm
+  pnpm add @ai-sdk/openai
+  ```
+</CodeGroup>
+
+Set your API keys in a `.env` file:
+
+```txt .env
+COMPOSIO_API_KEY=your_composio_api_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+## Example
+
+The `VercelProvider` returns tools as a `ToolSet` — an object keyed by tool slug. Pass this object directly to the `tools` parameter of `generateText()` or `streamText()`. The Vercel AI SDK handles the tool call loop and calls Composio's executor for each tool invocation.
+
+```typescript
+import { Composio } from '@composio/core';
+import { VercelProvider } from '@composio/vercel';
+import { openai } from '@ai-sdk/openai';
+import { generateText } from 'ai';
+import 'dotenv/config';
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new VercelProvider(),
+});
+
+async function main() {
+  // Tools are returned as a ToolSet (Record<string, CoreTool>)
+  const tools = await composio.tools.get('default', {
+    tools: ['GITHUB_STAR_REPO', 'HACKERNEWS_GET_USER'],
+  });
+
+  const { text } = await generateText({
+    model: openai('gpt-4o-mini'),
+    prompt: "Star the composiohq/composio repository on GitHub",
+    tools,
+    // maxSteps controls how many tool-call rounds the SDK will run automatically
+    maxSteps: 5,
+  });
+
+  console.log(text);
+}
+
+main();
+```
+
+<Tip>
+  Set `maxSteps` to allow the Vercel AI SDK to iterate through multiple rounds of tool calls automatically. Without it, the SDK stops after the first tool call round.
+</Tip>
+
+## Streaming
+
+Use `streamText()` with the same tool setup for streaming responses:
+
+```typescript
+import { Composio } from '@composio/core';
+import { VercelProvider } from '@composio/vercel';
+import { openai } from '@ai-sdk/openai';
+import { streamText } from 'ai';
+import 'dotenv/config';
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new VercelProvider(),
+});
+
+async function main() {
+  const tools = await composio.tools.get('default', {
+    tools: ['HACKERNEWS_GET_USER'],
+  });
+
+  const { textStream } = await streamText({
+    model: openai('gpt-4o-mini'),
+    prompt: "Tell me about the HackerNews user 'pg'",
+    tools,
+    maxSteps: 5,
+  });
+
+  for await (const chunk of textStream) {
+    process.stdout.write(chunk);
+  }
+}
+
+main();
+```
+
+## Strict mode
+
+Pass `{ strict: true }` to `VercelProvider` to strip optional properties from tool input schemas. This can improve reliability with models that prefer tighter schemas:
+
+```typescript
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new VercelProvider({ strict: true }),
+});
+```
+
+## Available models
+
+The `VercelProvider` works with any model supported by the Vercel AI SDK. Swap the model provider package to switch models:
+
+| Provider | Package | Example model |
+|---|---|---|
+| OpenAI | `@ai-sdk/openai` | `openai('gpt-4o-mini')` |
+| Anthropic | `@ai-sdk/anthropic` | `anthropic('claude-3-5-haiku-latest')` |
+| Google | `@ai-sdk/google` | `google('gemini-2.0-flash')` |
+| Mistral | `@ai-sdk/mistral` | `mistral('mistral-large-latest')` |
+
+<Note>
+  The Vercel AI SDK provider is TypeScript-only. For Python agent frameworks, see [LangChain](/providers/langchain) or [CrewAI](/providers/crewai).
+</Note>

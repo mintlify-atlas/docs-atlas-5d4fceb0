@@ -1,0 +1,137 @@
+---
+title: "Composio CLI: Terminal Tools for Agents and Developers"
+sidebarTitle: "Overview"
+description: "The Composio CLI lets you search and execute tools, manage app connections, and run scripted workflows from your terminal — designed for use inside Claude Code."
+---
+
+The Composio CLI is the terminal interface for Composio, designed primarily for use inside [Claude Code](https://claude.ai/code). It lets Claude search for tools, execute them with managed auth, connect apps, run multi-step scripts, and debug Composio projects — all from the command line. Instead of copying API keys and schemas into chat, you give Claude a reliable local tool surface it can operate autonomously.
+
+## Installation
+
+<Steps>
+  <Step title="Download and install the CLI">
+    Run the one-line install script. It detects your platform and architecture automatically, downloads the appropriate binary, installs it to `~/.composio/bin/composio`, and adds it to your shell's `PATH`.
+
+    ```bash
+    curl -fsSL https://composio.dev/install | bash
+    ```
+
+    Alternatively, install from npm, pnpm, or yarn:
+
+    ```bash
+    npm install -g @composio/cli
+    # or
+    pnpm add -g @composio/cli
+    # or
+    yarn global add @composio/cli
+    ```
+
+    <Note>
+      The npm/pnpm/yarn packages install the same CLI but rely on Node.js being present. The curl script installs a standalone binary that runs without any additional runtime.
+    </Note>
+  </Step>
+
+  <Step title="Restart your shell">
+    Reload your shell so the newly added `PATH` entry takes effect:
+
+    ```bash
+    exec $SHELL
+    ```
+  </Step>
+
+  <Step title="Log in to Composio">
+    Authenticate with your Composio account. `composio login` opens a browser for OAuth and stores your credentials locally.
+
+    ```bash
+    composio login
+    ```
+
+    <Note>
+      You need a Composio API key (tied to your account) to use the CLI. Sign up at [composio.dev](https://composio.dev) if you don't have one. `composio login` handles credential storage automatically — you do not need to manage the key directly.
+    </Note>
+
+    Prefer to log in directly with an existing key? Use the `--user-api-key` flag:
+
+    ```bash
+    composio login --user-api-key <your-api-key>
+    ```
+  </Step>
+</Steps>
+
+## Verify installation
+
+After logging in, confirm that the CLI is working correctly:
+
+```bash
+composio whoami
+composio --version
+```
+
+`composio whoami` prints your email, current organization, and account type. `composio --version` prints the installed binary version.
+
+## Using inside Claude Code
+
+`composio login` installs the `composio-cli` skill for Claude Code by default. This skill tells Claude how to use the CLI to find tools, connect accounts, and run scripts on your behalf.
+
+To install the skill manually at any time, run:
+
+```bash
+composio --install-skill composio-cli claude
+```
+
+Once the skill is installed, open Claude Code in any project directory. Claude will automatically use the CLI to search for tools, execute them with managed authentication, connect apps, and run multi-step scripted workflows — without requiring any additional setup on your part.
+
+<Tip>
+  The CLI is the recommended tool surface for Composio inside Claude Code. It handles auth, schema validation, and connection management automatically, so you can ask Claude to work in your connected apps directly.
+</Tip>
+
+## Core workflows
+
+<CardGroup cols={2}>
+  <Card title="Search tools" icon="magnifying-glass" href="/cli/commands#composio-search-query">
+    Find the right tool by describing what you want to do in natural language. Returns tool slugs, schemas, and suggested next steps.
+  </Card>
+  <Card title="Execute tools" icon="play" href="/cli/commands#composio-execute-tool_slug">
+    Run any of Composio's 1000+ tool integrations directly from the terminal, with automatic input validation and connection checks.
+  </Card>
+  <Card title="Connect apps" icon="link" href="/cli/commands#composio-link-toolkit">
+    Connect an external account (Gmail, GitHub, Slack, and more) using a browser-based OAuth flow. Composio manages all auth state.
+  </Card>
+  <Card title="Run scripts" icon="code" href="/cli/commands#composio-run-script">
+    Execute inline TypeScript or a script file with injected globals — `execute()`, `search()`, `proxy()`, `z` (Zod), and more — for multi-step workflows and fan-out pipelines.
+  </Card>
+</CardGroup>
+
+## Upgrading
+
+Keep the CLI up to date with the `upgrade` command:
+
+```bash
+composio upgrade
+```
+
+To install a specific release:
+
+```bash
+composio upgrade 0.13.1
+```
+
+To upgrade to the latest beta:
+
+```bash
+composio upgrade --beta
+```
+
+After upgrading, the CLI automatically re-installs the Claude Code skill for the new version.
+
+## Getting help
+
+Every command and subcommand supports `--help`:
+
+```bash
+composio --help
+composio --help full
+composio execute --help full
+composio run --help full
+composio dev --help full
+```

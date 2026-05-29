@@ -1,0 +1,140 @@
+---
+title: "Composio REST API Overview"
+sidebarTitle: "Overview"
+description: "The Composio REST API provides programmatic access to tools, toolkits, connected accounts, auth configs, triggers, and more. Base URL: https://backend.composio.dev/api/v3.1"
+---
+
+The Composio REST API is the underlying API that all SDKs use. You can call it directly for server-side integrations, administrative tasks, or when a language SDK is not available for your stack. Every SDK method maps to one or more REST endpoints, so anything you can do in the SDK you can do via HTTP.
+
+## Base URL
+
+All API requests use the following base URL:
+
+```
+https://backend.composio.dev/api/v3.1
+```
+
+The previous `v3` base path is still supported for backward compatibility. New integrations should use `v3.1`.
+
+## Authentication
+
+All requests require a project API key in the `x-api-key` header. See [Authentication](/reference/api/authentication) for full details including how to get your key and alternate header formats.
+
+```bash
+curl https://backend.composio.dev/api/v3.1/tools \
+  -H "x-api-key: $COMPOSIO_API_KEY"
+```
+
+## API Resources
+
+| Resource | Path prefix | Description |
+|---|---|---|
+| **Tools** | `/tools` | List, search, and execute tools from any connected toolkit. |
+| **Toolkits** | `/toolkits` | Browse available toolkits (apps) and their metadata. |
+| **Connected Accounts** | `/connected_accounts` | Create, list, and manage user OAuth connections and API key credentials. |
+| **Auth Configs** | `/auth_configs` | Create and manage OAuth app configurations and auth settings. |
+| **Triggers** | `/triggers_types`, `/trigger_instances` | List trigger types and manage active trigger instances. |
+| **Files** | `/files` | Upload files for use in tool arguments and download tool output files. |
+| **MCP** | `/mcp` | Access Model Context Protocol resources. |
+| **Projects** | `/projects` | Manage Composio projects (organization API key required). |
+
+## Making requests
+
+Every request requires the `x-api-key` header. Request bodies use `application/json`. Responses are always JSON.
+
+### Example: List tools for a toolkit
+
+```bash
+curl "https://backend.composio.dev/api/v3.1/tools?toolkit_slug=github&limit=10" \
+  -H "x-api-key: $COMPOSIO_API_KEY"
+```
+
+### Example: Execute a tool
+
+```bash
+curl -X POST "https://backend.composio.dev/api/v3.1/tools/execute/GITHUB_LIST_REPOS" \
+  -H "x-api-key: $COMPOSIO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "arguments": {
+      "per_page": 10,
+      "sort": "updated"
+    },
+    "user_id": "user_123",
+    "version": "20250906_01"
+  }'
+```
+
+### Example: List connected accounts for a user
+
+```bash
+curl "https://backend.composio.dev/api/v3.1/connected_accounts?user_ids[]=user_123&statuses[]=ACTIVE" \
+  -H "x-api-key: $COMPOSIO_API_KEY"
+```
+
+## Errors
+
+All error responses follow a consistent shape:
+
+```json
+{
+  "error": {
+    "message": "No connected account found for this user and toolkit",
+    "status": 400,
+    "request_id": "req_abc123def456",
+    "suggested_fix": "Connect the user to the toolkit first"
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `message` | Human-readable description of the error. |
+| `status` | HTTP status code. |
+| `request_id` | Unique request identifier — include this when contacting support. |
+| `suggested_fix` | Actionable guidance when available. |
+
+Common HTTP status codes:
+
+| Code | Meaning |
+|---|---|
+| `200` | Success |
+| `400` | Bad request — missing or invalid parameters |
+| `401` | Unauthorized — missing or invalid API key |
+| `403` | Forbidden — API key lacks permission |
+| `404` | Not found — resource does not exist |
+| `429` | Too many requests — rate limit exceeded |
+| `500` | Server error — something went wrong on Composio's side |
+
+## Pagination
+
+List endpoints return paginated results using cursor-based pagination. The response includes a `next_cursor` field when more results are available.
+
+```bash
+# First page
+curl "https://backend.composio.dev/api/v3.1/connected_accounts?limit=20" \
+  -H "x-api-key: $COMPOSIO_API_KEY"
+
+# Next page — pass next_cursor from the previous response
+curl "https://backend.composio.dev/api/v3.1/connected_accounts?limit=20&cursor=eyJpZCI6..." \
+  -H "x-api-key: $COMPOSIO_API_KEY"
+```
+
+Typical pagination response shape:
+
+```json
+{
+  "items": [...],
+  "next_cursor": "eyJpZCI6ImNhX3h4eCJ9",
+  "total_count": 142
+}
+```
+
+<Tip>
+  When using the Python or TypeScript SDK, use the built-in `list()` methods with `cursor` parameters rather than managing raw pagination. The SDKs expose the same `next_cursor` on list responses.
+</Tip>
+
+## Related pages
+
+- [Authentication](/reference/api/authentication) — how to authenticate API requests
+- [Rate Limits](/reference/api/rate-limits) — request limits, retry strategies, and quotas

@@ -1,0 +1,210 @@
+---
+title: "Composio with Google Gemini: Function Calling"
+sidebarTitle: "Google"
+description: "Use Composio tools with Google's Gemini models via the generative-ai SDK and Google ADK. Provider adapters available for both Python and TypeScript."
+---
+
+Composio provides adapters for Google's Gemini models through both the `@google/genai` SDK (TypeScript and Python) and the Google Agent Development Kit (ADK, Python only). Tools are formatted as `FunctionDeclaration` objects compatible with Gemini's function calling API, and Composio handles execution of each function call result.
+
+## Installation
+
+<Tabs>
+  <Tab title="TypeScript">
+    <CodeGroup>
+      ```bash npm
+      npm install @composio/core @composio/google @google/genai
+      ```
+      ```bash yarn
+      yarn add @composio/core @composio/google @google/genai
+      ```
+      ```bash pnpm
+      pnpm add @composio/core @composio/google @google/genai
+      ```
+    </CodeGroup>
+  </Tab>
+  <Tab title="Python (Gemini)">
+    ```bash
+    pip install composio composio-google google-genai
+    ```
+  </Tab>
+  <Tab title="Python (ADK)">
+    ```bash
+    pip install composio composio-google-adk google-adk
+    ```
+  </Tab>
+</Tabs>
+
+Set your API keys in a `.env` file:
+
+```txt .env
+COMPOSIO_API_KEY=your_composio_api_key
+GOOGLE_API_KEY=your_google_api_key
+```
+
+## Gemini function calling
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import { GoogleProvider } from '@composio/google';
+    import { GoogleGenAI } from '@google/genai';
+    import 'dotenv/config';
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    const composio = new Composio({
+      apiKey: process.env.COMPOSIO_API_KEY,
+      provider: new GoogleProvider(),
+    });
+
+    async function main() {
+      // Tools are returned as FunctionDeclaration[] — Gemini's native format
+      const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER');
+
+      const task = "Fetch the details of the user 'pg' on HackerNews";
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: task,
+        config: {
+          tools: [{ functionDeclarations: tools }],
+        },
+      });
+
+      if (response.functionCalls && response.functionCalls.length > 0) {
+        const functionCall = {
+          name: response.functionCalls[0].name || '',
+          args: (response.functionCalls[0].args || {}) as Record<string, unknown>,
+        };
+
+        // Execute the function call through Composio
+        const result = await composio.provider.executeToolCall('default', functionCall);
+        console.log(JSON.parse(result).data);
+      } else {
+        console.log(response.text);
+      }
+    }
+
+    main();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    from composio import Composio
+    from composio_google import GoogleProvider
+    from google import genai
+    from google.genai import types
+
+    composio = Composio(provider=GoogleProvider())
+    client = genai.Client()
+
+    # Tools are returned as FunctionDeclaration objects
+    tools = composio.tools.get(user_id="default", toolkits=["GITHUB"])
+
+    config = types.GenerateContentConfig(tools=tools)
+    chat = client.chats.create(model="gemini-2.0-flash", config=config)
+
+    response = chat.send_message("Star the composiohq/composio repo on GitHub")
+
+    # Agentic loop — keep executing function calls until Gemini responds with text
+    while response.function_calls:
+        parts = []
+        for fc in response.function_calls:
+            result = composio.provider.execute_tool_call(
+                user_id="default", function_call=fc
+            )
+            parts.append(
+                types.Part.from_function_response(name=fc.name, response=result)
+            )
+        response = chat.send_message(parts)
+
+    print(response.text)
+    ```
+  </Tab>
+</Tabs>
+
+## Google Agent Development Kit (ADK)
+
+The Google ADK provider wraps Composio tools as `FunctionTool` instances for use inside ADK agents. This integration is Python-only.
+
+```python
+from composio import Composio
+from composio_google_adk import GoogleAdkProvider
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
+
+app_name = "github_agent"
+session_id = "session_001"
+user_id = "user_123"
+
+composio = Composio(provider=GoogleAdkProvider())
+
+# Tools are returned as ADK FunctionTool objects
+tools = composio.tools.get(user_id=user_id, toolkits=["GITHUB"])
+
+agent = Agent(
+    name=app_name,
+    model="gemini-2.0-flash",
+    instruction="You are a GitHub utility agent with access to GitHub APIs.",
+    tools=tools,
+)
+
+session_service = InMemorySessionService()
+session_service.create_session_sync(
+    app_name=app_name,
+    user_id=user_id,
+    session_id=session_id,
+)
+
+runner = Runner(
+    agent=agent,
+    app_name=app_name,
+    session_service=session_service,
+)
+
+content = types.Content(
+    role="user",
+    parts=[types.Part(text="Star the composiohq/composio repository on GitHub")],
+)
+
+events = runner.run(user_id=user_id, session_id=session_id, new_message=content)
+for event in events:
+    if (
+        event.is_final_response()
+        and event.content is not None
+        and event.content.parts
+    ):
+        print("Agent Response:", event.content.parts[0].text)
+```
+
+<Note>
+  The Google ADK integration (`composio-google-adk`) is Python-only. The Gemini function calling integration (`@composio/google`) is available for both TypeScript and Python.
+</Note>
+
+## Executing tool calls
+
+The `GoogleProvider` exposes `executeToolCall(userId, functionCall)` for running individual function calls:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    const result = await composio.provider.executeToolCall('user_123', {
+      name: 'GITHUB_STAR_REPO',
+      args: { owner: 'composiohq', repo: 'composio' },
+    });
+
+    console.log(JSON.parse(result)); // parsed tool execution result
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    result = composio.provider.execute_tool_call(
+        user_id="user_123",
+        function_call=fc,  # google.genai FunctionCall object
+    )
+    ```
+  </Tab>
+</Tabs>

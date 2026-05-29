@@ -1,0 +1,247 @@
+---
+title: "Tool Router: Intelligent Context-Aware Tool Selection"
+sidebarTitle: "Tool Router"
+description: "The Composio Tool Router semantically searches and ranks tools at runtime, delivering a focused subset of relevant tools to your agent instead of loading all tools upfront."
+---
+
+Loading hundreds of tool definitions into every LLM context wastes tokens and degrades accuracy. The Tool Router uses semantic search to select only the tools relevant to the current task, injecting a focused subset into context on demand. Instead of passing 500 tool schemas to every API call, your agent asks for the tools it needs, gets back the top-K most relevant ones, and calls them — all within the same session.
+
+<Tip>
+The Tool Router is especially useful when your agent might need tools from many different toolkits but can't — or shouldn't — load all of them upfront. It keeps context lean and reduces hallucinations caused by irrelevant tool schemas.
+</Tip>
+
+## How the Tool Router works
+
+The flow is straightforward:
+
+1. **Session creation** — you call `composio.create()` and optionally list the toolkits or tools the session should have access to.
+2. **Tool discovery** — the agent calls the `COMPOSIO_SEARCH_TOOLS` meta-tool with a natural-language query describing the task.
+3. **Semantic ranking** — the Tool Router searches across all tools in the session and returns the top-K most semantically relevant results with their full schemas.
+4. **Schema injection** — the agent calls `COMPOSIO_GET_TOOL_SCHEMAS` to fetch the exact input/output schemas for the tools it wants to use.
+5. **Execution** — the agent executes those tools directly within the session.
+
+This means the LLM's context only ever contains the tool definitions it actually needs for the current step.
+
+## Creating a Tool Router session
+
+Sessions are created with `composio.create()`. Specify which toolkits should be searchable:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio } from "@composio/core";
+import { OpenAIAgentsProvider } from "@composio/openai-agents";
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new OpenAIAgentsProvider(),
+});
+
+// Create a session scoped to specific toolkits
+const session = await composio.create("user_123", {
+  toolkits: ["gmail", "github", "slack", "notion", "linear"],
+});
+
+// The agent gets meta-tools for discovery, not all 500+ tool schemas
+const tools = await session.tools();
+```
+</Tab>
+<Tab value="Python">
+```python
+from composio import Composio
+from composio_openai_agents import OpenAIAgentsProvider
+
+composio = Composio(provider=OpenAIAgentsProvider())
+
+# Create a session scoped to specific toolkits
+session = composio.create(
+    user_id="user_123",
+    toolkits=["gmail", "github", "slack", "notion", "linear"],
+)
+
+# The agent gets meta-tools for discovery, not all 500+ tool schemas
+tools = session.tools()
+```
+</Tab>
+</Tabs>
+
+You can also create a session without restricting toolkits — the agent can then search across the full Composio tool catalog:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+// No toolkits restriction — agent can discover any Composio tool
+const session = await composio.create("user_123");
+const tools = await session.tools();
+```
+</Tab>
+<Tab value="Python">
+```python
+# No toolkits restriction — agent can discover any Composio tool
+session = composio.create(user_id="user_123")
+tools = session.tools()
+```
+</Tab>
+</Tabs>
+
+## Using meta tools for tool discovery
+
+When the agent calls `session.tools()`, it receives a small set of **meta-tools** instead of every tool schema. These meta-tools are how the agent discovers and loads tool schemas on demand:
+
+| Meta tool | Purpose |
+|---|---|
+| `COMPOSIO_SEARCH_TOOLS` | Semantically search for tools matching a use-case description |
+| `COMPOSIO_GET_TOOL_SCHEMAS` | Fetch the full input/output schemas for specific tool slugs |
+| `COMPOSIO_MANAGE_CONNECTIONS` | Check connection status and generate Connect Links for auth |
+| `COMPOSIO_MULTI_EXECUTE_TOOL` | Execute multiple tools in a single call (parallel execution) |
+
+The agent uses these in sequence: search → get schemas → execute. From your code's perspective, you just call `session.tools()` and pass the result to your LLM framework — the discovery loop is handled automatically by the agent.
+
+## Direct tool router API
+
+You can also call the Tool Router directly from your own code, bypassing the agent loop. This is useful for building UI previews, pre-fetching tools for a specific task, or custom orchestration:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+// Programmatic semantic search — no agent required
+const searchResults = await session.search({
+  query: "send an email with a file attachment",
+  toolkits: ["gmail"],
+});
+
+console.log(searchResults.tools.map((t) => t.slug));
+// ["GMAIL_SEND_EMAIL", "GMAIL_CREATE_DRAFT", ...]
+
+// Execute a tool directly within the session
+const result = await session.execute("GMAIL_SEND_EMAIL", {
+  to: "alice@example.com",
+  subject: "Hello from Composio",
+  body: "This was sent via the Tool Router.",
+});
+
+console.log(result.data);
+```
+</Tab>
+<Tab value="Python">
+```python
+# Programmatic semantic search — no agent required
+search_results = session.search(
+    query="send an email with a file attachment",
+    toolkits=["gmail"],
+)
+
+print([t.slug for t in search_results.tools])
+# ["GMAIL_SEND_EMAIL", "GMAIL_CREATE_DRAFT", ...]
+
+# Execute a tool directly within the session
+result = session.execute(
+    "GMAIL_SEND_EMAIL",
+    arguments={
+        "to": "alice@example.com",
+        "subject": "Hello from Composio",
+        "body": "This was sent via the Tool Router.",
+    },
+)
+
+print(result.data)
+```
+</Tab>
+</Tabs>
+
+## Direct tools preset
+
+If your use case requires all tools to be available upfront without semantic search — for example, when you have a small, known set of tools — use the `DIRECT_TOOLS` session preset. This disables the meta-tool discovery layer and exposes tool schemas directly:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio, SessionPreset } from "@composio/core";
+
+const session = await composio.create("user_123", {
+  toolkits: ["gmail"],
+  sessionPreset: SessionPreset.DIRECT_TOOLS,
+  preload: { tools: "all" },
+});
+
+// session.tools() now returns full Gmail tool schemas directly
+const tools = await session.tools();
+```
+</Tab>
+<Tab value="Python">
+```python
+session = composio.create(
+    user_id="user_123",
+    toolkits=["gmail"],
+    session_preset="DIRECT_TOOLS",
+    preload={"tools": "all"},
+)
+
+# session.tools() now returns full Gmail tool schemas directly
+tools = session.tools()
+```
+</Tab>
+</Tabs>
+
+<Warning>
+The `DIRECT_TOOLS` preset loads full tool schemas into the LLM context for every call. Use it only when you have a small number of known tools. For agents that might need tools from many toolkits, stick with the default semantic search flow.
+</Warning>
+
+## Updating a session
+
+You can update an existing session's configuration without recreating it. This is useful for dynamically adding toolkits or adjusting preload behavior mid-conversation:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+await session.update({
+  toolkits: ["gmail", "github", "linear"],
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+session.update(
+    toolkits=["gmail", "github", "linear"],
+)
+```
+</Tab>
+</Tabs>
+
+## Resuming an existing session
+
+Sessions are persistent. Use `composio.use()` to reconnect to an existing session by ID:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+// Resume an existing session — connected accounts are preserved
+const session = await composio.use("ses_abc123");
+
+console.log(session.mcp.url);
+```
+</Tab>
+<Tab value="Python">
+```python
+# Resume an existing session — connected accounts are preserved
+session = composio.use("ses_abc123")
+
+print(session.mcp.url)
+```
+</Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Sessions" href="/concepts/sessions">
+    Full reference for session creation and configuration options
+  </Card>
+  <Card title="Tools and Toolkits" href="/concepts/tools-and-toolkits">
+    Browse the 1000+ built-in Composio tools
+  </Card>
+  <Card title="Custom Tools" href="/guides/custom-tools">
+    Add your own tools alongside built-in ones in a session
+  </Card>
+  <Card title="Observability" href="/guides/observability">
+    Monitor tool execution, search queries, and error rates
+  </Card>
+</CardGroup>

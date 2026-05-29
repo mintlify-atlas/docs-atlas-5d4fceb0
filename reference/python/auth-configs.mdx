@@ -1,0 +1,232 @@
+---
+title: "AuthConfigs — Composio Python SDK Reference"
+sidebarTitle: "Auth Configs"
+description: "composio.auth_configs lets you create and manage custom OAuth app credentials, API key configurations, and auth settings for Composio toolkits."
+---
+
+`composio.auth_configs` manages authentication configurations — the bridge between a toolkit (e.g. GitHub, Gmail) and the OAuth application or API key credentials used to connect users. Every connected account is tied to an auth config. By default, Composio provides managed auth configs for all toolkits. Create your own to use your organization's OAuth app credentials, control OAuth scopes, or restrict which tools are accessible.
+
+## `auth_configs.create()`
+
+Create a new auth config for a toolkit.
+
+```python
+def create(
+    toolkit: str,
+    options: auth_config_create_params.AuthConfig,
+) -> auth_config_create_response.AuthConfig
+```
+
+<ParamField path="toolkit" type="str" required>
+  The toolkit slug to create the auth config for (e.g. `"github"`, `"gmail"`). Must match the toolkit's slug exactly.
+</ParamField>
+
+<ParamField path="options" type="AuthConfig" required>
+  Auth config options dict. The shape depends on `type`:
+
+  <Expandable title="Custom OAuth2 options (type: 'custom')">
+    <ParamField path="type" type="'custom'" required>
+      Indicates you are providing your own OAuth credentials.
+    </ParamField>
+    <ParamField path="auth_scheme" type="str" required>
+      The auth scheme — `"OAUTH2"`, `"OAUTH1"`, `"API_KEY"`, `"BASIC"`, `"BEARER_TOKEN"`, etc.
+    </ParamField>
+    <ParamField path="credentials" type="dict" required>
+      OAuth credentials: `client_id`, `client_secret`, and optionally `scopes` (list of strings).
+    </ParamField>
+    <ParamField path="is_enabled_for_tool_router" type="bool" optional>
+      Whether this auth config is available in tool-router sessions. Default `True`.
+    </ParamField>
+  </Expandable>
+
+  <Expandable title="Default (Composio-managed) options (type: 'default')">
+    <ParamField path="type" type="'default'" required>
+      Use Composio's managed OAuth credentials.
+    </ParamField>
+    <ParamField path="is_enabled_for_tool_router" type="bool" optional>
+      Whether this auth config is available in tool-router sessions.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+An `AuthConfig` object with fields including `id` (`ac_xxx`), `toolkit`, `auth_scheme`, `status`, and `created_at`.
+
+## `auth_configs.get()`
+
+Retrieve a specific auth config by its ID.
+
+```python
+def get(nanoid: str) -> AuthConfigRetrieveResponse
+```
+
+<ParamField path="nanoid" type="str" required>
+  The auth config ID (`ac_xxx`).
+</ParamField>
+
+## `auth_configs.list()`
+
+List all auth configs, optionally filtered by toolkit.
+
+```python
+def list(**query: te.Unpack[auth_config_list_params.AuthConfigListParams]) -> AuthConfigListResponse
+```
+
+Common query parameters accepted as keyword arguments:
+
+<ParamField path="toolkit_slug" type="str" optional>
+  Filter to auth configs for a specific toolkit (e.g. `"github"`).
+</ParamField>
+
+<ParamField path="auth_scheme" type="str" optional>
+  Filter by auth scheme (e.g. `"OAUTH2"`, `"API_KEY"`).
+</ParamField>
+
+<ParamField path="limit" type="int" optional>
+  Maximum number of results to return per page.
+</ParamField>
+
+<ParamField path="cursor" type="str" optional>
+  Pagination cursor. Pass `next_cursor` from the previous response to get the next page.
+</ParamField>
+
+### Returns
+
+An `AuthConfigListResponse` with `items` (list of auth config objects) and `next_cursor`.
+
+## `auth_configs.update()`
+
+Update an existing auth config's credentials, scopes, or tool access settings.
+
+```python
+def update(
+    nanoid: str,
+    *,
+    options: auth_config_update_params.AuthConfigUpdateParams,
+) -> dict
+```
+
+<ParamField path="nanoid" type="str" required>
+  The auth config ID (`ac_xxx`) to update.
+</ParamField>
+
+<ParamField path="options" type="AuthConfigUpdateParams" required>
+  Update payload. Must include `type` (`"custom"` or `"default"`) plus the fields you want to change: `credentials`, `is_enabled_for_tool_router`, `tool_access_config`.
+</ParamField>
+
+## `auth_configs.delete()`
+
+Delete an auth config permanently. Connected accounts using this auth config will lose their association.
+
+```python
+def delete(nanoid: str) -> dict
+```
+
+<ParamField path="nanoid" type="str" required>
+  The auth config ID (`ac_xxx`) to delete.
+</ParamField>
+
+## `auth_configs.enable()` / `auth_configs.disable()`
+
+Enable or disable an auth config without deleting it. Disabled auth configs cannot be used to create new connections.
+
+```python
+def enable(nanoid: str) -> dict
+def disable(nanoid: str) -> dict
+```
+
+<ParamField path="nanoid" type="str" required>
+  The auth config ID (`ac_xxx`).
+</ParamField>
+
+## Code examples
+
+### Create a custom OAuth2 config for GitHub
+
+```python
+import os
+from composio import Composio
+
+composio = Composio(api_key=os.environ["COMPOSIO_API_KEY"])
+
+# Create your own GitHub OAuth app config
+auth_config = composio.auth_configs.create(
+    toolkit="github",
+    options={
+        "type": "custom",
+        "auth_scheme": "OAUTH2",
+        "credentials": {
+            "client_id": os.environ["GITHUB_CLIENT_ID"],
+            "client_secret": os.environ["GITHUB_CLIENT_SECRET"],
+            "scopes": ["repo", "read:org", "read:user"],
+        },
+    },
+)
+
+print(f"Created auth config: {auth_config.id}")
+# → Created auth config: ac_xxxxxxxxxxxx
+```
+
+### Create an API key config
+
+```python
+auth_config = composio.auth_configs.create(
+    toolkit="openai",
+    options={
+        "type": "custom",
+        "auth_scheme": "API_KEY",
+        "credentials": {
+            "api_key": os.environ["OPENAI_API_KEY"],
+        },
+    },
+)
+```
+
+### List all GitHub auth configs
+
+```python
+configs = composio.auth_configs.list(toolkit_slug="github")
+
+for config in configs.items:
+    print(config.id, config.auth_scheme, config.status)
+```
+
+### Retrieve a specific auth config
+
+```python
+config = composio.auth_configs.get("ac_xxxxxxxxxxxx")
+print(config.id, config.auth_scheme, config.status)
+```
+
+### Update credentials on an existing config
+
+```python
+composio.auth_configs.update(
+    "ac_xxxxxxxxxxxx",
+    options={
+        "type": "custom",
+        "credentials": {
+            "client_id": os.environ["NEW_CLIENT_ID"],
+            "client_secret": os.environ["NEW_CLIENT_SECRET"],
+            "scopes": ["repo", "read:org"],
+        },
+    },
+)
+```
+
+### Disable then re-enable an auth config
+
+```python
+composio.auth_configs.disable("ac_xxxxxxxxxxxx")
+# ... later ...
+composio.auth_configs.enable("ac_xxxxxxxxxxxx")
+```
+
+<Note>
+  Auth config IDs are stable and safe to store. When you create a custom auth config, pass its ID as `auth_config_id` to `connected_accounts.link()` or `connected_accounts.initiate()` so new connections use your OAuth app instead of Composio's managed one.
+</Note>
+
+<Warning>
+  Deleting an auth config does not automatically revoke OAuth tokens in the external service. Revoke tokens in the external service's developer console if needed.
+</Warning>

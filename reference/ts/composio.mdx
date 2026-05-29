@@ -1,0 +1,191 @@
+---
+title: "Composio Class — TypeScript SDK Reference"
+sidebarTitle: "Composio"
+description: "The Composio class is the entry point for the TypeScript SDK. Initialize it with an API key and provider to access tools, toolkits, connected accounts, triggers, and MCP."
+---
+
+`Composio` is the root class of the TypeScript SDK. Instantiate it once with your API key and an optional provider adapter, then access all Composio resources through its properties. The constructor reads your `COMPOSIO_API_KEY` environment variable automatically so no explicit configuration is needed for most use cases.
+
+## Import
+
+```typescript
+import { Composio } from '@composio/core';
+```
+
+## Constructor
+
+```typescript
+new Composio(config?: ComposioConfig<TProvider>)
+```
+
+All constructor fields are optional. When `apiKey` is omitted the SDK reads the `COMPOSIO_API_KEY` environment variable. When `provider` is omitted the SDK defaults to `OpenAIProvider`.
+
+<ParamField body="apiKey" type="string" optional>
+  Composio API key. Defaults to the `COMPOSIO_API_KEY` environment variable when omitted.
+</ParamField>
+
+<ParamField body="provider" type="TProvider" optional>
+  Provider adapter used to format tools for your AI framework. Defaults to `OpenAIProvider`. Pass `new AnthropicProvider()`, `new LangchainProvider()`, or any custom provider that extends `BaseComposioProvider`.
+</ParamField>
+
+<ParamField body="baseURL" type="string" optional>
+  Override the Composio API base URL. Defaults to the production endpoint (`https://backend.composio.dev`).
+</ParamField>
+
+<ParamField body="allowTracking" type="boolean" optional>
+  Enable or disable anonymous usage telemetry. Defaults to `true`.
+</ParamField>
+
+<ParamField body="dangerouslyAllowAutoUploadDownloadFiles" type="boolean" optional>
+  Opt in to automatic file upload and download during tool execution. When `true`, the SDK reads local paths and fetches URLs marked as file-uploadable in tool schemas on your behalf. Disabled by default (`false`).
+</ParamField>
+
+<ParamField body="sensitiveFileUploadProtection" type="boolean" optional>
+  When `true`, local file paths for auto-upload and `files.upload()` are checked against a built-in denylist of sensitive path segments such as `.ssh` and `.aws`, as well as credential-like file names such as `.env`. Defaults to `true`.
+</ParamField>
+
+<ParamField body="fileUploadDirs" type="string[] | false" optional>
+  Allowlist of directories from which the SDK may read local files during automatic file upload. Pass `false` to reject every local path during auto-upload while keeping URL and `File`/`Blob` uploads working. Defaults to `[~/.composio/temp]`.
+</ParamField>
+
+<ParamField body="fileDownloadDir" type="string" optional>
+  Directory where files downloaded during tool execution are written. Defaults to `~/.composio/files`. Relative paths resolve against `process.cwd()`.
+</ParamField>
+
+<ParamField body="disableVersionCheck" type="boolean" optional>
+  Disable the npm version check that runs on startup. Defaults to `false`.
+</ParamField>
+
+<ParamField body="toolkitVersions" type="Record<string, string>" optional>
+  Pin specific toolkit versions for tool retrieval and execution. Omit to use `'latest'` for all toolkits. You can also set individual versions via environment variables using the pattern `COMPOSIO_TOOLKIT_VERSION_GITHUB=20250902_00`.
+</ParamField>
+
+<ParamField body="defaultHeaders" type="Record<string, string>" optional>
+  Custom HTTP headers sent with every Composio API request. Useful for request tracing or correlation IDs.
+</ParamField>
+
+## Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `tools` | `Tools` | Retrieve and execute tools. See [Tools reference](/reference/ts/tools). |
+| `toolkits` | `Toolkits` | List and inspect toolkit metadata. See [Toolkits reference](/reference/ts/toolkits). |
+| `connectedAccounts` | `ConnectedAccounts` | Manage user connections to external apps. See [Connected Accounts reference](/reference/ts/connected-accounts). |
+| `authConfigs` | `AuthConfigs` | Manage authentication configurations for toolkits. See [Auth Configs reference](/reference/ts/auth-configs). |
+| `triggers` | `Triggers` | Subscribe to real-time webhook events. See [Triggers reference](/reference/ts/triggers). |
+| `mcp` | `MCP` | Create and manage Model Context Protocol server configurations. See [MCP reference](/reference/ts/mcp). |
+| `files` | `Files` | Upload and download files for use in tool execution. |
+| `experimental` | `Experimental` | Experimental SDK methods whose shape may change in future releases. |
+| `provider` | `TProvider` | The active provider adapter instance. |
+
+## Methods
+
+### composio.create()
+
+Creates a new tool router session for a user. The session provides a scoped execution context with MCP endpoints, tool search, and connection management.
+
+```typescript
+composio.create(
+  userId: string,
+  config?: ToolRouterCreateSessionConfig
+): Promise<Session>
+```
+
+<ParamField body="userId" type="string" required>
+  External user identifier from your database.
+</ParamField>
+
+<ParamField body="config" type="ToolRouterCreateSessionConfig" optional>
+  Session configuration. Supports `toolkits`, `tools`, `authConfigs`, `connectedAccounts`, `manageConnections`, `workbench`, `preload`, and `experimental` fields.
+</ParamField>
+
+Returns a `Session` object with the following fields:
+
+<ResponseField name="sessionId" type="string">
+  Unique identifier for this session.
+</ResponseField>
+
+<ResponseField name="mcp" type="ToolRouterMCPServerConfig">
+  MCP server configuration including `url` and optional `headers` for connecting an MCP client.
+</ResponseField>
+
+<ResponseField name="tools" type="function">
+  Async function that returns provider-formatted tools for this session.
+</ResponseField>
+
+<ResponseField name="execute" type="function">
+  Execute any tool within the session by slug and arguments.
+</ResponseField>
+
+<ResponseField name="search" type="function">
+  Semantically search for tools by use case description.
+</ResponseField>
+
+<ResponseField name="authorize" type="function">
+  Initiate an OAuth connection for a toolkit within the session.
+</ResponseField>
+
+### composio.use()
+
+Retrieve an existing tool router session by its ID.
+
+```typescript
+composio.use(
+  sessionId: string,
+  options?: { customTools?: CustomTool[]; customToolkits?: CustomToolkit[] }
+): Promise<Session>
+```
+
+### composio.flush()
+
+Flush pending telemetry. Use this in environments without process exit events such as Cloudflare Workers.
+
+```typescript
+composio.flush(): Promise<void>
+```
+
+## Example
+
+```typescript
+import { Composio } from '@composio/core';
+import { OpenAIProvider } from '@composio/core';
+import OpenAI from 'openai';
+
+// Initialize with defaults — reads COMPOSIO_API_KEY from environment
+const composio = new Composio();
+
+// Initialize with explicit configuration
+const composio = new Composio({
+  apiKey: 'your-api-key',
+  provider: new OpenAIProvider(),
+  allowTracking: false,
+  toolkitVersions: {
+    github: '20250902_00',
+    slack: '20250902_00',
+  },
+});
+
+// Create a session for a user
+const session = await composio.create('user_123', {
+  toolkits: ['github', 'slack'],
+  manageConnections: true,
+});
+
+console.log('Session ID:', session.sessionId);
+console.log('MCP URL:', session.mcp.url);
+
+// Get provider-formatted tools for the session
+const tools = await session.tools();
+
+// Use the tools with OpenAI
+const openai = new OpenAI();
+const response = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  messages: [{ role: 'user', content: 'Create a GitHub issue for the bug we found.' }],
+  tools,
+});
+```
+
+<Note>
+  The `toolkitVersions` option pins tool schema versions across the SDK instance. For production systems, always pin to a concrete version rather than relying on `'latest'` to avoid unexpected behavior when new toolkit versions are released.
+</Note>

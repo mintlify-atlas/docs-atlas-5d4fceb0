@@ -1,0 +1,300 @@
+---
+title: "Authenticate Users with Composio Connect Links"
+sidebarTitle: "Authenticating Users"
+description: "Use in-chat authentication or session.authorize() to connect users to Gmail, GitHub, Slack, and 1000+ other apps through Composio-managed OAuth flows."
+---
+
+Composio provides two authentication flows for connecting users to third-party apps. **In-chat authentication** lets the agent handle OAuth prompts automatically — no extra setup required. **Manual authentication** lets your app initiate connections during onboarding or from a settings page, giving you full control over when and where users authenticate.
+
+## In-chat authentication
+
+By default, every session includes the `COMPOSIO_MANAGE_CONNECTIONS` meta-tool. When a user asks the agent to do something that requires an account the agent hasn't connected yet, the agent calls this meta-tool and returns a Connect Link URL directly in chat. The user clicks the link, completes OAuth, confirms in the conversation, and the agent retries the original task.
+
+No extra setup is required. Just create a session:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio } from "@composio/core";
+
+const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+const session = await composio.create("user_123");
+const tools = await session.tools();
+```
+</Tab>
+<Tab value="Python">
+```python
+from composio import Composio
+
+composio = Composio(api_key="your_api_key")
+session = composio.create(user_id="user_123")
+tools = session.tools()
+```
+</Tab>
+</Tabs>
+
+When the user triggers a tool that requires authentication, the agent response looks like this:
+
+```
+You: Summarize my emails from today
+
+Agent: I need you to connect your Gmail account first. Please click here to authorize:
+       https://connect.composio.dev/link/ln_abc123
+
+You: Done
+
+Agent: Here's a summary of your emails from today...
+```
+
+You can redirect users back to your chat page after they authenticate by passing a `callbackUrl`:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const session = await composio.create("user_123", {
+  manageConnections: {
+    callbackUrl: "https://yourapp.com/chat",
+  },
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+session = composio.create(
+    user_id="user_123",
+    manage_connections={
+        "callback_url": "https://yourapp.com/chat"
+    },
+)
+```
+</Tab>
+</Tabs>
+
+## Manual authentication with `session.authorize()`
+
+Use manual authentication when you want users connected before they ever start chatting — for example, during onboarding, from a settings page, or as a pre-flight check before running an automated task.
+
+<Steps>
+<Step>
+**Create a session and disable in-chat auth prompts**
+
+Pass `manageConnections: false` to prevent the agent from prompting users to authenticate in chat. You'll handle auth entirely in your UI.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const session = await composio.create("user_123", {
+  manageConnections: false,
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+session = composio.create(
+    user_id="user_123",
+    manage_connections=False,
+)
+```
+</Tab>
+</Tabs>
+</Step>
+
+<Step>
+**Generate a Connect Link with `session.authorize()`**
+
+Call `session.authorize()` with the toolkit slug to get a `redirectUrl` (also called `redirect_url` in Python). Redirect the user to this URL to start the OAuth flow.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const connectionRequest = await session.authorize("gmail");
+
+console.log(connectionRequest.redirectUrl);
+// https://connect.composio.dev/link/ln_abc123
+
+// Redirect the user to this URL in your UI
+```
+</Tab>
+<Tab value="Python">
+```python
+connection_request = session.authorize("gmail")
+
+print(connection_request.redirect_url)
+# https://connect.composio.dev/link/ln_abc123
+```
+</Tab>
+</Tabs>
+</Step>
+
+<Step>
+**Wait for the user to complete OAuth**
+
+Poll for completion using `waitForConnection()` / `wait_for_connection()`. The method resolves with the connected account once the user finishes authentication.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const connectedAccount = await connectionRequest.waitForConnection(60000);
+console.log(`Connected: ${connectedAccount.id}`);
+```
+</Tab>
+<Tab value="Python">
+```python
+connected_account = connection_request.wait_for_connection(60000)
+print(f"Connected: {connected_account.id}")
+```
+</Tab>
+</Tabs>
+
+<Info>
+If the user closes the Connect Link without completing auth, the connection stays in `INITIATED` status until it expires. `waitForConnection()` will timeout after the specified milliseconds.
+</Info>
+</Step>
+</Steps>
+
+## Callback URL
+
+Pass a `callbackUrl` to control where users land after they finish authenticating. You can embed query parameters to carry context through the OAuth flow:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const connectionRequest = await session.authorize("gmail", {
+  callbackUrl: "https://your-app.com/callback?user_id=user_123&source=onboarding",
+});
+
+console.log(connectionRequest.redirectUrl);
+```
+</Tab>
+<Tab value="Python">
+```python
+connection_request = session.authorize(
+    "gmail",
+    callback_url="https://your-app.com/callback?user_id=user_123&source=onboarding",
+)
+
+print(connection_request.redirect_url)
+```
+</Tab>
+</Tabs>
+
+After authentication, Composio redirects the user to your callback URL with these parameters appended:
+
+| Parameter | Description |
+|---|---|
+| `status` | `success` or `failed` |
+| `connected_account_id` | The ID of the newly created connected account |
+
+```
+https://your-app.com/callback?user_id=user_123&source=onboarding&status=success&connected_account_id=ca_abc123
+```
+
+## Checking connection status
+
+Use `session.toolkits()` to inspect which toolkits are connected for the current session user:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const toolkits = await session.toolkits();
+
+toolkits.items.forEach((toolkit) => {
+  const accountId = toolkit.connection?.connectedAccount?.id ?? "Not connected";
+  console.log(`${toolkit.name}: ${accountId}`);
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+toolkits = session.toolkits()
+
+for toolkit in toolkits.items:
+    if toolkit.connection.is_active:
+        status = toolkit.connection.connected_account.id
+    else:
+        status = "Not connected"
+    print(f"{toolkit.name}: {status}")
+```
+</Tab>
+</Tabs>
+
+## Putting it all together
+
+A common pattern is to verify all required connections before starting the agent loop:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio } from "@composio/core";
+
+const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+const requiredToolkits = ["gmail", "github"];
+
+const session = await composio.create("user_123", {
+  manageConnections: false,
+});
+
+const toolkits = await session.toolkits();
+
+const connected = toolkits.items
+  .filter((t) => t.connection?.connectedAccount)
+  .map((t) => t.slug);
+
+const pending = requiredToolkits.filter((slug) => !connected.includes(slug));
+
+console.log("Connected:", connected);
+console.log("Pending:", pending);
+
+for (const slug of pending) {
+  const connectionRequest = await session.authorize(slug);
+  console.log(`Connect ${slug}: ${connectionRequest.redirectUrl}`);
+  await connectionRequest.waitForConnection();
+}
+
+console.log(`All toolkits connected! MCP URL: ${session.mcp.url}`);
+```
+</Tab>
+<Tab value="Python">
+```python
+from composio import Composio
+
+composio = Composio(api_key="your-api-key")
+required_toolkits = ["gmail", "github"]
+
+session = composio.create(
+    user_id="user_123",
+    manage_connections=False,
+)
+
+toolkits = session.toolkits()
+
+connected = {t.slug for t in toolkits.items if t.connection.is_active}
+pending = [slug for slug in required_toolkits if slug not in connected]
+
+print(f"Connected: {connected}")
+print(f"Pending: {pending}")
+
+for slug in pending:
+    connection_request = session.authorize(slug)
+    print(f"Connect {slug}: {connection_request.redirect_url}")
+    connection_request.wait_for_connection()
+
+print(f"All toolkits connected! MCP URL: {session.mcp.url}")
+```
+</Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Sessions" href="/concepts/sessions">
+    Understand how sessions work and what options are available
+  </Card>
+  <Card title="Connected Accounts" href="/concepts/connected-accounts">
+    Manage multiple connected accounts per user and toolkit
+  </Card>
+  <Card title="MCP" href="/guides/mcp">
+    Use the session MCP URL with Claude Desktop, Cursor, and other MCP clients
+  </Card>
+  <Card title="Tool Router" href="/guides/tool-router">
+    Semantically select tools at runtime to keep LLM context focused
+  </Card>
+</CardGroup>

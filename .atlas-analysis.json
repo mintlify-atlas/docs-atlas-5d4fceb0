@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Composio",
+  "projectType": "sdk-library",
+  "projectName": "Composio",
+  "projectDescription": "Composio is a multi-language SDK (TypeScript and Python) that gives AI agents access to 1000+ third-party tool integrations with built-in authentication, session management, triggers, MCP support, and a sandboxed workbench.",
   "theme": "luma",
-  "colors": {
-    "primary": "#040404",
-    "light": "#848484",
-    "dark": "#e8e8e5"
-  },
-  "favicon": "https://media.brand.dev/b5023ac5-c189-407d-8d87-9cdc0700672f.png",
-  "logo": {
-    "light": "https://media.brand.dev/6c4631ad-acab-46ec-a163-75428cfc2431.svg",
-    "dark": "https://media.brand.dev/cc5f4726-d980-4724-889b-b2322ec858c7.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/ComposioHQ/composio"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/ComposioHQ/composio"
-    }
-  },
+  "primaryColor": "#040404",
+  "lightColor": "#848484",
+  "darkColor": "#e8e8e5",
   "navigation": {
     "tabs": [
       {
@@ -116,5 +99,39 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "1000+ pre-built tool integrations (GitHub, Gmail, Slack, Notion, and more)",
+    "Managed OAuth2, API key, and Bearer token authentication for users",
+    "Session-scoped tool execution with per-user isolation",
+    "MCP (Model Context Protocol) server endpoint per session",
+    "Sandboxed remote workbench with bash execution",
+    "Tool Router for intelligent context-aware tool selection",
+    "Real-time triggers and webhook event handling",
+    "Custom tool and custom toolkit creation",
+    "File upload/download handling during tool execution",
+    "Provider adapters for OpenAI, Anthropic, LangChain, Vercel AI SDK, Google, CrewAI, Mastra, LlamaIndex",
+    "Composio CLI for terminal-based tool execution inside Claude Code"
+  ],
+  "publicApiSurface": [
+    "new Composio({ apiKey, provider, ... })",
+    "composio.tools.get(userId, { toolkits, tools, tags })",
+    "composio.tools.execute(toolSlug, { userId, arguments })",
+    "composio.toolkits.get(toolkit)",
+    "composio.toolkits.list()",
+    "composio.connectedAccounts.get(connectedAccountId)",
+    "composio.connectedAccounts.list({ userId })",
+    "composio.connectedAccounts.initiate({ userId, toolkitSlug, ... })",
+    "composio.authConfigs.create({ toolkitSlug, authScheme, credentials })",
+    "composio.triggers.subscribe(userId, { toolkitSlug, triggerSlug, callback })",
+    "composio.mcp.get(mcpUrl, userId)",
+    "composio.create(userId) → Session",
+    "session.tools()",
+    "session.mcp.url",
+    "session.authorize({ toolkitSlug, callbackUrl })",
+    "experimental_createTool(config)",
+    "experimental_createToolkit(config)",
+    "OpenAIProvider, AnthropicProvider, LangChainProvider, VercelProvider, GoogleProvider, MastraProvider",
+    "composio login / whoami / search / execute / link / proxy / run (CLI commands)"
+  ]
 }

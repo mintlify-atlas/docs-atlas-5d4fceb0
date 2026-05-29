@@ -1,0 +1,290 @@
+---
+title: "Tools API — Composio TypeScript SDK Reference"
+sidebarTitle: "Tools"
+description: "composio.tools provides get() to retrieve formatted tools for your AI provider and execute() to run any tool directly with arguments. Supports sessions and direct access."
+---
+
+The `Tools` class manages tool retrieval and execution. Use `composio.tools.get()` to retrieve tools formatted for your AI provider, and `composio.tools.execute()` to run any tool directly. All tools — both built-in Composio tools and custom tools registered via `createCustomTool()` — are accessible through this interface.
+
+## tools.get()
+
+Retrieve tools formatted for your AI provider. The returned collection depends on the active provider — for `OpenAIProvider` this is an array of OpenAI function-calling tool definitions.
+
+```typescript
+composio.tools.get(
+  userId: string,
+  filters: ToolListParams,
+  options?: ProviderOptions
+): Promise<TToolCollection>
+```
+
+You can also retrieve a single tool by slug:
+
+```typescript
+composio.tools.get(
+  userId: string,
+  slug: string,
+  options?: ProviderOptions
+): Promise<TToolCollection>
+```
+
+<ParamField body="userId" type="string" required>
+  External user identifier whose connected accounts are used to scope tool execution.
+</ParamField>
+
+<ParamField body="filters" type="ToolListParams">
+  Filters that control which tools are returned. Provide one of `toolkits`, `tools`, `search`, or `authConfigIds`.
+
+  <Expandable title="ToolListParams fields">
+    <ParamField body="toolkits" type="string[]">
+      Filter by toolkit slugs (e.g. `['github', 'slack']`). Cannot be combined with `tools`.
+    </ParamField>
+    <ParamField body="tools" type="string[]">
+      Filter by specific tool slugs (e.g. `['GITHUB_CREATE_ISSUE', 'SLACK_SEND_MESSAGE']`). Cannot be combined with `toolkits`.
+    </ParamField>
+    <ParamField body="tags" type="string[]">
+      Filter by tool tags.
+    </ParamField>
+    <ParamField body="search" type="string">
+      Free-text search query.
+    </ParamField>
+    <ParamField body="authConfigIds" type="string[]">
+      Filter tools to those accessible via specific auth config IDs.
+    </ParamField>
+    <ParamField body="limit" type="number">
+      Maximum number of tools to return. When `toolkits` is the only filter and no `limit` is set, the SDK automatically applies the `important` flag to surface the most relevant tools.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="ProviderOptions" optional>
+  Provider-level options applied during tool retrieval.
+
+  <Expandable title="ProviderOptions fields">
+    <ParamField body="modifySchema" type="function">
+      Transform tool schemas before they are wrapped by the provider. Receives `{ toolSlug, toolkitSlug, schema }` and must return the modified schema.
+    </ParamField>
+    <ParamField body="beforeExecute" type="function">
+      Hook called before each tool execution. Receives `{ toolSlug, toolkitSlug, params }` and must return the (optionally modified) params.
+    </ParamField>
+    <ParamField body="afterExecute" type="function">
+      Hook called after each tool execution. Receives `{ toolSlug, toolkitSlug, result }` and must return the (optionally modified) result.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## tools.execute()
+
+Execute any tool directly by slug. This bypasses the provider and returns a raw `ToolExecuteResponse`. By default, manual execution requires a pinned toolkit version — pass `dangerouslySkipVersionCheck: true` or configure `toolkitVersions` at SDK initialization to avoid the version check.
+
+```typescript
+composio.tools.execute(
+  slug: string,
+  body: ToolExecuteParams,
+  modifiers?: ExecuteToolModifiers
+): Promise<ToolExecuteResponse>
+```
+
+<ParamField body="slug" type="string" required>
+  Tool identifier (e.g. `'GITHUB_CREATE_ISSUE'`).
+</ParamField>
+
+<ParamField body="body" type="ToolExecuteParams" required>
+  Execution parameters.
+
+  <Expandable title="ToolExecuteParams fields">
+    <ParamField body="userId" type="string">
+      User ID whose connected account is used for authenticated tool calls.
+    </ParamField>
+    <ParamField body="arguments" type="Record<string, unknown>">
+      Input arguments matching the tool's input schema.
+    </ParamField>
+    <ParamField body="connectedAccountId" type="string">
+      Specific connected account ID to use, overriding automatic account selection.
+    </ParamField>
+    <ParamField body="version" type="string">
+      Specific toolkit version to execute against (e.g. `'20250902_00'`). Takes precedence over SDK-level `toolkitVersions`.
+    </ParamField>
+    <ParamField body="dangerouslySkipVersionCheck" type="boolean">
+      Skip the version check that prevents execution when the resolved version is `'latest'`. Not recommended for production.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="modifiers" type="ExecuteToolModifiers" optional>
+  Lifecycle hooks for the execution.
+
+  <Expandable title="ExecuteToolModifiers fields">
+    <ParamField body="beforeExecute" type="function">
+      Called before execution. Receives `{ toolSlug, toolkitSlug, params }`, returns modified params.
+    </ParamField>
+    <ParamField body="afterExecute" type="function">
+      Called after execution. Receives `{ toolSlug, toolkitSlug, result }`, returns modified result.
+    </ParamField>
+    <ParamField body="beforeFileUpload" type="function">
+      Called before each file is uploaded during automatic file upload (requires `dangerouslyAllowAutoUploadDownloadFiles: true`).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### ToolExecuteResponse
+
+<ResponseField name="data" type="Record<string, unknown>">
+  The tool's output data.
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if the tool failed, otherwise `null`.
+</ResponseField>
+
+<ResponseField name="successful" type="boolean">
+  `true` when the tool executed without errors.
+</ResponseField>
+
+<ResponseField name="logId" type="string | undefined">
+  Composio log identifier for this execution, useful for debugging.
+</ResponseField>
+
+## tools.getRawComposioTools()
+
+Fetch tools in the internal SDK format without provider wrapping. Useful when you need to inspect tool schemas directly or build custom provider integrations.
+
+```typescript
+composio.tools.getRawComposioTools(
+  query: ToolListParams,
+  options?: { modifySchema?: TransformToolSchemaModifier }
+): Promise<Tool[]>
+```
+
+## tools.getRawComposioToolBySlug()
+
+Fetch a single tool by slug in the internal SDK format.
+
+```typescript
+composio.tools.getRawComposioToolBySlug(
+  slug: string,
+  options?: { modifySchema?: TransformToolSchemaModifier; version?: string }
+): Promise<Tool>
+```
+
+## tools.proxyExecute()
+
+Proxy a custom HTTP request through a toolkit's connected account authentication layer, without calling a specific tool.
+
+```typescript
+composio.tools.proxyExecute(body: ToolProxyParams): Promise<ToolProxyResponse>
+```
+
+<ParamField body="body.endpoint" type="string" required>
+  The API endpoint URL to call.
+</ParamField>
+<ParamField body="body.method" type="string" required>
+  HTTP method (`'GET'`, `'POST'`, `'PUT'`, `'DELETE'`, `'PATCH'`).
+</ParamField>
+<ParamField body="body.connectedAccountId" type="string" required>
+  Connected account whose credentials are injected.
+</ParamField>
+<ParamField body="body.body" type="unknown" optional>
+  Request body for POST/PUT/PATCH requests.
+</ParamField>
+<ParamField body="body.parameters" type="array" optional>
+  Additional query or header parameters to inject.
+</ParamField>
+
+## Modifiers
+
+Modifiers are hooks that transform tool inputs and outputs globally for all provider-dispatched calls.
+
+| Modifier | When it runs | Use case |
+|---|---|---|
+| `beforeExecute` | Before tool execution | Inject extra arguments, log requests, enforce policies |
+| `afterExecute` | After tool execution | Sanitize responses, log results, transform output |
+| `modifySchema` | During tool retrieval | Add/remove schema fields, override descriptions |
+
+## Examples
+
+<Tabs>
+  <Tab title="Get tools for OpenAI">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import OpenAI from 'openai';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+    const openai = new OpenAI();
+
+    // Get GitHub tools for a user — provider formats them as OpenAI function definitions
+    const tools = await composio.tools.get('user_123', {
+      toolkits: ['github'],
+      limit: 10,
+    });
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'List my GitHub repositories.' }],
+      tools,
+    });
+    ```
+  </Tab>
+  <Tab title="Execute a tool directly">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({
+      apiKey: process.env.COMPOSIO_API_KEY,
+      toolkitVersions: { github: '20250902_00' },
+    });
+
+    const result = await composio.tools.execute('GITHUB_CREATE_ISSUE', {
+      userId: 'user_123',
+      arguments: {
+        owner: 'my-org',
+        repo: 'my-repo',
+        title: 'Bug: something is broken',
+        body: 'Steps to reproduce...',
+      },
+    });
+
+    if (result.successful) {
+      console.log('Issue created:', result.data);
+    } else {
+      console.error('Error:', result.error);
+    }
+    ```
+  </Tab>
+  <Tab title="Schema modifier">
+    ```typescript
+    const tools = await composio.tools.get(
+      'user_123',
+      { toolkits: ['slack'] },
+      {
+        modifySchema: ({ toolSlug, toolkitSlug, schema }) => ({
+          ...schema,
+          description: `[${toolkitSlug.toUpperCase()}] ${schema.description}`,
+        }),
+      }
+    );
+    ```
+  </Tab>
+  <Tab title="Execute with lifecycle hooks">
+    ```typescript
+    const result = await composio.tools.execute(
+      'SLACK_SEND_MESSAGE',
+      {
+        userId: 'user_123',
+        version: '20250902_00',
+        arguments: { channel: '#general', text: 'Hello!' },
+      },
+      {
+        beforeExecute: ({ toolSlug, params }) => {
+          console.log(`Calling ${toolSlug}`, params.arguments);
+          return params;
+        },
+        afterExecute: ({ toolSlug, result }) => {
+          console.log(`${toolSlug} completed:`, result.successful);
+          return result;
+        },
+      }
+    );
+    ```
+  </Tab>
+</Tabs>

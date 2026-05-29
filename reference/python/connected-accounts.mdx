@@ -1,0 +1,294 @@
+---
+title: "ConnectedAccounts — Composio Python SDK Reference"
+sidebarTitle: "Connected Accounts"
+description: "composio.connected_accounts manages user OAuth connections and API key auth. Use link() to start OAuth flows and list() to query existing connections."
+---
+
+`composio.connected_accounts` is the interface for managing user connections to third-party services. Use it to initiate OAuth flows, import existing tokens, and query or delete connections. A connected account ties an external user ID to credentials for a specific toolkit (e.g. GitHub, Gmail, Slack) and is required before tools can be executed on that user's behalf.
+
+## `connected_accounts.link()`
+
+Create a Composio Connect Link for a user to authorize a connection via OAuth. Returns a `ConnectionRequest` that contains a `redirect_url` to send the user to.
+
+```python
+def link(
+    user_id: str,
+    auth_config_id: str,
+    *,
+    callback_url: str | None = None,
+    alias: str | None = None,
+    allow_multiple: bool = False,
+    experimental: link_create_params.Experimental | None = None,
+) -> ConnectionRequest
+```
+
+<ParamField path="user_id" type="str" required>
+  Your application's external user identifier. Composio uses this to associate the connection with the correct user for tool execution.
+</ParamField>
+
+<ParamField path="auth_config_id" type="str" required>
+  The ID of the auth config (`ac_xxx`) that defines which OAuth application and scopes to use. Retrieve this from `composio.auth_configs.list()` or the Composio dashboard.
+</ParamField>
+
+<ParamField path="callback_url" type="str" optional>
+  URL to redirect the user to after they complete the OAuth flow in the external service. Overrides the default callback URL configured on the auth config.
+</ParamField>
+
+<ParamField path="alias" type="str" optional>
+  Optional human-readable label for this connection (e.g. `"work-github"`). Must be unique per `user_id` and toolkit within the project.
+</ParamField>
+
+<ParamField path="allow_multiple" type="bool" optional>
+  When `False` (default), raises `ComposioMultipleConnectedAccountsError` if the user already has an `ACTIVE` connection on this auth config. Set to `True` to allow multiple connections.
+</ParamField>
+
+<ParamField path="experimental" type="Experimental" optional>
+  Experimental options for creating SHARED connections with per-user ACL configuration. Shape may change in future releases.
+</ParamField>
+
+## `connected_accounts.initiate()`
+
+<Warning>
+  `initiate()` is deprecated for Composio-managed OAuth flows. Use `link()` instead, which works for all redirectable schemes and has the same return shape. `initiate()` continues to work for custom auth configs and non-OAuth schemes (API key, bearer token, basic auth).
+</Warning>
+
+```python
+def initiate(
+    user_id: str,
+    auth_config_id: str,
+    *,
+    callback_url: str | None = None,
+    allow_multiple: bool = False,
+    config: connected_account_create_params.ConnectionState | None = None,
+    alias: str | None = None,
+) -> ConnectionRequest
+```
+
+<ParamField path="user_id" type="str" required>
+  The external user ID to create the connected account for.
+</ParamField>
+
+<ParamField path="auth_config_id" type="str" required>
+  The auth config ID (`ac_xxx`) specifying which OAuth app to use.
+</ParamField>
+
+<ParamField path="callback_url" type="str" optional>
+  Callback URL for OAuth redirect flows.
+</ParamField>
+
+<ParamField path="allow_multiple" type="bool" optional>
+  Allow multiple active connections for the same user and auth config. Default `False`.
+</ParamField>
+
+<ParamField path="config" type="ConnectionState" optional>
+  A typed connection state dict (produced by `auth_scheme.oauth2(...)`, `auth_scheme.api_key(...)`, etc.) for importing existing credentials without a redirect flow.
+</ParamField>
+
+<ParamField path="alias" type="str" optional>
+  Optional human-readable alias for the connection.
+</ParamField>
+
+## `connected_accounts.get()`
+
+Retrieve a single connected account by its ID.
+
+```python
+def get(nanoid: str) -> ConnectedAccountRetrieveResponse
+```
+
+<ParamField path="nanoid" type="str" required>
+  The connected account ID (`ca_xxx`).
+</ParamField>
+
+## `connected_accounts.list()`
+
+List connected accounts with optional filters.
+
+```python
+def list(
+    *,
+    user_ids: list[str] | None = None,
+    toolkit_slugs: list[str] | None = None,
+    auth_config_ids: list[str] | None = None,
+    statuses: list[str] | None = None,
+    limit: int | None = None,
+    cursor: str | None = None,
+) -> ConnectedAccountListResponse
+```
+
+<ParamField path="user_ids" type="list[str]" optional>
+  Filter to connections belonging to specific user IDs.
+</ParamField>
+
+<ParamField path="toolkit_slugs" type="list[str]" optional>
+  Filter to connections for specific toolkits (e.g. `["github", "gmail"]`).
+</ParamField>
+
+<ParamField path="auth_config_ids" type="list[str]" optional>
+  Filter to connections using specific auth configs.
+</ParamField>
+
+<ParamField path="statuses" type="list[str]" optional>
+  Filter by status. Values: `"ACTIVE"`, `"INACTIVE"`, `"FAILED"`, `"EXPIRED"`, `"REVOKED"`.
+</ParamField>
+
+<ParamField path="limit" type="int" optional>
+  Maximum number of results to return per page.
+</ParamField>
+
+<ParamField path="cursor" type="str" optional>
+  Pagination cursor. Pass `next_cursor` from the previous response to get the next page.
+</ParamField>
+
+## `connected_accounts.delete()`
+
+Delete a connected account permanently.
+
+```python
+def delete(nanoid: str) -> None
+```
+
+<ParamField path="nanoid" type="str" required>
+  The connected account ID (`ca_xxx`) to delete.
+</ParamField>
+
+## `connected_accounts.update()`
+
+Update a connected account's alias or credentials.
+
+```python
+def update(
+    nanoid: str,
+    *,
+    alias: str | None = None,
+    connection: connected_account_patch_params.Connection | None = None,
+) -> ConnectedAccountPatchResponse
+```
+
+<ParamField path="nanoid" type="str" required>
+  The connected account ID (`ca_xxx`).
+</ParamField>
+
+<ParamField path="alias" type="str" optional>
+  New human-readable alias. Pass an empty string `""` to clear the current alias.
+</ParamField>
+
+<ParamField path="connection" type="Connection" optional>
+  Credential update payload with `authScheme` and `val` fields.
+</ParamField>
+
+## `connected_accounts.wait_for_connection()`
+
+Poll until a connected account becomes `ACTIVE` or a timeout is reached.
+
+```python
+def wait_for_connection(
+    id: str,
+    timeout: float | None = None,
+) -> ConnectedAccountRetrieveResponse
+```
+
+<ParamField path="id" type="str" required>
+  The connected account ID (`ca_xxx`) to wait on.
+</ParamField>
+
+<ParamField path="timeout" type="float" optional>
+  Maximum seconds to wait. Defaults to `60.0`. Raises `ComposioSDKTimeoutError` on expiry.
+</ParamField>
+
+## `ConnectionRequest`
+
+`link()` and `initiate()` both return a `ConnectionRequest` object.
+
+<ResponseField name="id" type="str">
+  The connected account ID (`ca_xxx`). Use this with `wait_for_connection()`.
+</ResponseField>
+
+<ResponseField name="status" type="str">
+  Current connection status (e.g. `"INITIATED"`, `"ACTIVE"`, `"FAILED"`).
+</ResponseField>
+
+<ResponseField name="redirect_url" type="str | None">
+  The OAuth authorization URL to redirect the user to. `None` for non-redirect flows (API key, bearer token, etc.).
+</ResponseField>
+
+### `connection_request.wait_for_connection(timeout=60)`
+
+Wait on the `ConnectionRequest` object directly instead of passing the ID:
+
+```python
+def wait_for_connection(timeout: float | None = None) -> ConnectedAccountRetrieveResponse
+```
+
+## `auth_scheme` helpers
+
+The `auth_scheme` singleton (from `composio.core.models.connected_accounts`) produces typed `ConnectionState` dicts for importing credentials directly without a redirect flow. Use these with `initiate(config=...)`.
+
+```python
+from composio.core.models.connected_accounts import auth_scheme
+
+# Import an existing OAuth 2 token
+state = auth_scheme.oauth2({"access_token": "gho_xxx", "refresh_token": "ghr_xxx"})
+
+# Register an API key credential
+state = auth_scheme.api_key({"api_key": "sk-xxx"})
+
+# Bearer token
+state = auth_scheme.bearer_token({"token": "Bearer xxx"})
+```
+
+Available helpers: `oauth1`, `oauth2`, `composio_link`, `api_key`, `basic`, `bearer_token`, `google_service_account`, `no_auth`, `calcom_auth`, `billcom_auth`, `basic_with_jwt`.
+
+## Code examples
+
+### OAuth flow with redirect
+
+```python
+import os
+from composio import Composio
+
+composio = Composio(api_key=os.environ["COMPOSIO_API_KEY"])
+
+# Start the OAuth flow
+connection_request = composio.connected_accounts.link(
+    user_id="user_123",
+    auth_config_id="ac_xxxxxxxxxxxx",
+    callback_url="https://your-app.com/oauth/callback",
+)
+
+# Redirect the user
+print(f"Visit: {connection_request.redirect_url}")
+
+# Later, after the user completes auth — poll until active
+connected_account = connection_request.wait_for_connection(timeout=120)
+print(f"Connected! Account ID: {connected_account.id}")
+```
+
+### Import an existing API key
+
+```python
+from composio.core.models.connected_accounts import auth_scheme
+
+connection_request = composio.connected_accounts.initiate(
+    user_id="user_123",
+    auth_config_id="ac_xxxxxxxxxxxx",
+    config=auth_scheme.api_key({"api_key": "my-service-api-key"}),
+)
+
+# API key connections are ACTIVE immediately — no redirect needed
+connected_account = connection_request.wait_for_connection(timeout=10)
+```
+
+### List and filter connections
+
+```python
+# All active GitHub connections for a user
+connections = composio.connected_accounts.list(
+    user_ids=["user_123"],
+    toolkit_slugs=["github"],
+    statuses=["ACTIVE"],
+)
+
+for account in connections.items:
+    print(account.id, account.status, account.created_at)
+```

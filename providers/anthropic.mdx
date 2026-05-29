@@ -1,0 +1,226 @@
+---
+title: "Composio with Anthropic Claude: Tool Use Integration"
+sidebarTitle: "Anthropic"
+description: "Use Composio tools with Anthropic's Claude models via the tool_use API. Install @composio/anthropic, pass tools to Claude, and execute tool_use blocks through Composio."
+---
+
+Composio's Anthropic provider formats tools as `ToolParam` objects for Anthropic's `tool_use` API. Pass Composio tools to `anthropic.messages.create()` and execute `tool_use` content blocks back through `composio.provider.handleToolCalls()` — the provider handles all extraction and formatting automatically.
+
+## Installation
+
+<Tabs>
+  <Tab title="TypeScript">
+    <CodeGroup>
+      ```bash npm
+      npm install @composio/core @composio/anthropic @anthropic-ai/sdk
+      ```
+      ```bash yarn
+      yarn add @composio/core @composio/anthropic @anthropic-ai/sdk
+      ```
+      ```bash pnpm
+      pnpm add @composio/core @composio/anthropic @anthropic-ai/sdk
+      ```
+    </CodeGroup>
+  </Tab>
+  <Tab title="Python">
+    ```bash
+    pip install composio composio-anthropic anthropic
+    ```
+  </Tab>
+</Tabs>
+
+Set your API keys in a `.env` file:
+
+```txt .env
+COMPOSIO_API_KEY=your_composio_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
+```
+
+## Example
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import { AnthropicProvider } from '@composio/anthropic';
+    import Anthropic from '@anthropic-ai/sdk';
+    import 'dotenv/config';
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const composio = new Composio({
+      apiKey: process.env.COMPOSIO_API_KEY,
+      provider: new AnthropicProvider(),
+    });
+
+    async function main() {
+      // Tools are returned as ToolParam[] — Claude's native format
+      const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER');
+
+      const messages: Anthropic.Messages.MessageParam[] = [
+        {
+          role: 'user',
+          content: "Fetch the details of the user 'pg' from HackerNews and summarize their profile",
+        },
+      ];
+
+      let message = await anthropic.messages.create({
+        model: 'claude-3-7-sonnet-latest',
+        max_tokens: 1024,
+        tools,
+        messages,
+      });
+
+      messages.push({ role: 'assistant', content: message.content });
+
+      // Agentic loop — keep executing tool calls until Claude responds with text
+      while (message.stop_reason === 'tool_use') {
+        // handleToolCalls extracts tool_use blocks, executes them, and returns
+        // formatted tool_result messages ready to append to the conversation
+        const toolResults = await composio.provider.handleToolCalls('default', message);
+        messages.push(...toolResults);
+
+        message = await anthropic.messages.create({
+          model: 'claude-3-7-sonnet-latest',
+          max_tokens: 1024,
+          tools,
+          messages,
+        });
+
+        messages.push({ role: 'assistant', content: message.content });
+      }
+
+      // Print the final text response
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          console.log(block.text);
+        }
+      }
+    }
+
+    main();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import anthropic
+    from composio import Composio
+    from composio_anthropic import AnthropicProvider
+
+    anthropic_client = anthropic.Anthropic()
+    composio = Composio(provider=AnthropicProvider())
+
+    # Tools are returned as a list of ToolParam dicts — Claude's native format
+    tools = composio.tools.get(user_id="default", toolkits=["GITHUB"])
+
+    messages = [
+        {"role": "user", "content": "Star the composiohq/composio repo on GitHub"},
+    ]
+
+    response = anthropic_client.messages.create(
+        model="claude-3-opus-20240229",
+        max_tokens=1024,
+        tools=tools,
+        messages=messages,
+    )
+
+    # Execute the tool_use blocks and get results
+    results = composio.provider.handle_tool_calls(user_id="default", response=response)
+    print(results)
+    ```
+  </Tab>
+</Tabs>
+
+## Handling tool use blocks
+
+When Claude decides to use a tool, the response's `stop_reason` is `"tool_use"` and `response.content` contains one or more `tool_use` blocks. Composio's provider handles this for you:
+
+<Steps>
+  <Step title="Detect tool use">
+    Check `message.stop_reason === 'tool_use'` (TypeScript) or `response.stop_reason == 'tool_use'` (Python) before processing.
+  </Step>
+  <Step title="Execute all tool calls">
+    Call `composio.provider.handleToolCalls(userId, message)` — it extracts every `tool_use` block from `message.content`, executes each one, and returns a list of `MessageParam` objects with `role: 'user'` and `tool_result` content blocks ready to append to your conversation.
+  </Step>
+  <Step title="Continue the conversation">
+    Append the tool results to your messages array and call `anthropic.messages.create()` again. Repeat until `stop_reason` is `'end_turn'`.
+  </Step>
+</Steps>
+
+```typescript
+// handleToolCalls returns MessageParam[] — append directly to your messages
+const toolResults = await composio.provider.handleToolCalls('user_123', message);
+messages.push(...toolResults);
+```
+
+## Tool caching
+
+Enable Anthropic's prompt caching for tools by passing `{ cacheTools: true }` to `AnthropicProvider`. This adds `cache_control: { type: 'ephemeral' }` to each tool definition, which can significantly reduce latency and costs for repeated calls with the same tool set.
+
+```typescript
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new AnthropicProvider({ cacheTools: true }),
+});
+```
+
+## Claude Agent SDK
+
+For the Claude Agent SDK (higher-level agentic framework from Anthropic), use the separate `@composio/claude-agent-sdk` package:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import { ClaudeAgentSDKProvider } from '@composio/claude-agent-sdk';
+    import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk';
+
+    const composio = new Composio({
+      provider: new ClaudeAgentSDKProvider(),
+    });
+
+    const session = await composio.create('user_123');
+    const tools = await session.tools();
+    const toolServer = createSdkMcpServer({ name: 'composio', version: '1.0.0', tools });
+
+    for await (const content of query({
+      prompt: "Send an email to john@example.com with subject 'Hello'",
+      options: {
+        mcpServers: { composio: toolServer },
+        permissionMode: 'bypassPermissions',
+      },
+    })) {
+      if (content.type === 'assistant') {
+        console.log('Claude:', content.message);
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import asyncio
+    from composio import Composio
+    from composio_claude_agent_sdk import ClaudeAgentSDKProvider
+    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, create_sdk_mcp_server
+
+    composio = Composio(provider=ClaudeAgentSDKProvider())
+
+    session = composio.create(user_id="user_123")
+    tools = session.tools()
+    tool_server = create_sdk_mcp_server(name="composio", version="1.0.0", tools=tools)
+
+    async def main():
+        options = ClaudeAgentOptions(
+            system_prompt="You are a helpful assistant",
+            permission_mode="bypassPermissions",
+            mcp_servers={"composio": tool_server},
+        )
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query("Send an email to john@example.com")
+            async for msg in client.receive_response():
+                print(msg)
+
+    asyncio.run(main())
+    ```
+  </Tab>
+</Tabs>

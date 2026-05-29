@@ -1,0 +1,316 @@
+---
+title: "AuthConfigs API — Composio TypeScript SDK Reference"
+sidebarTitle: "Auth Configs"
+description: "composio.authConfigs manages authentication configurations for toolkits. Create custom OAuth apps, configure API key auth, and set per-toolkit scopes."
+---
+
+The `AuthConfigs` class manages authentication configurations — the bridge between your app's OAuth credentials and Composio's connected account system. An auth config specifies *how* users authenticate with a toolkit (OAuth2, API key, basic auth, etc.) and holds the application-level credentials (client ID, client secret, API keys) used to initiate connections.
+
+## When to use custom auth configs vs. Composio-managed
+
+By default, Composio provides managed OAuth apps for all supported toolkits. You do not need to create an auth config to get started. Use custom auth configs when you need to:
+
+- Use your own OAuth application (custom client ID / client secret)
+- Configure specific OAuth scopes for your use case
+- Use API key, bearer token, or basic auth schemes
+- Restrict which tools are available for a given auth config
+
+<Note>
+  For development and evaluation, skip auth config creation and use Composio-managed OAuth by calling `composio.toolkits.authorize(userId, toolkitSlug)` directly — it creates a managed auth config automatically.
+</Note>
+
+## authConfigs.create()
+
+Create a new authentication configuration for a toolkit.
+
+```typescript
+composio.authConfigs.create(
+  toolkit: string,
+  options?: CreateAuthConfigParams
+): Promise<CreateAuthConfigResponse>
+```
+
+<ParamField body="toolkit" type="string" required>
+  Toolkit slug to create the auth config for (e.g. `'github'`, `'gmail'`).
+</ParamField>
+
+<ParamField body="options" type="CreateAuthConfigParams" optional>
+  Auth config type and settings. Defaults to `{ type: 'use_composio_managed_auth' }`.
+
+  <Expandable title="Custom auth config (use_custom_auth)">
+    <ParamField body="type" type='"use_custom_auth"' required>
+      Create a custom auth config with your own credentials.
+    </ParamField>
+    <ParamField body="authScheme" type="string" required>
+      Authentication scheme. One of `OAUTH2`, `OAUTH1`, `API_KEY`, `BEARER_TOKEN`, `BASIC`, `GOOGLE_SERVICE_ACCOUNT`, `NO_AUTH`, `BASIC_WITH_JWT`, `CALCOM_AUTH`, `SERVICE_ACCOUNT`, `SAML`, `DCR_OAUTH`, `S2S_OAUTH2`.
+    </ParamField>
+    <ParamField body="credentials" type="Record<string, string | number | boolean>" required>
+      Auth credentials — for OAuth2 this is `{ client_id, client_secret }`, for API key this is `{ api_key }`, etc.
+    </ParamField>
+    <ParamField body="name" type="string" optional>
+      Human-readable name for this auth config.
+    </ParamField>
+    <ParamField body="isEnabledForToolRouter" type="boolean" optional>
+      Whether this auth config can be used in tool router sessions.
+    </ParamField>
+    <ParamField body="toolAccessConfig.toolsForConnectedAccountCreation" type="string[]" optional>
+      Restrict which tools are shown during account connection.
+    </ParamField>
+    <ParamField body="proxyConfig.proxyUrl" type="string" optional>
+      Proxy URL for routing API calls through your infrastructure.
+    </ParamField>
+  </Expandable>
+
+  <Expandable title="Composio-managed auth config (use_composio_managed_auth)">
+    <ParamField body="type" type='"use_composio_managed_auth"' required>
+      Use Composio's OAuth app. Composio manages the client credentials.
+    </ParamField>
+    <ParamField body="credentials.scopes" type="string | string[]" optional>
+      OAuth scopes to request. Overrides Composio's default scopes for this toolkit.
+    </ParamField>
+    <ParamField body="name" type="string" optional>
+      Human-readable name for this auth config.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### CreateAuthConfigResponse
+
+<ResponseField name="id" type="string">
+  Unique identifier for the new auth config.
+</ResponseField>
+
+<ResponseField name="authScheme" type="string">
+  Authentication scheme used by this config.
+</ResponseField>
+
+<ResponseField name="isComposioManaged" type="boolean">
+  Whether this auth config uses Composio's managed OAuth app.
+</ResponseField>
+
+<ResponseField name="toolkit" type="string">
+  Toolkit slug this auth config belongs to.
+</ResponseField>
+
+## authConfigs.get()
+
+Retrieve an auth config by its ID.
+
+```typescript
+composio.authConfigs.get(nanoid: string): Promise<AuthConfigRetrieveResponse>
+```
+
+### AuthConfigRetrieveResponse
+
+<ResponseField name="id" type="string">
+  Auth config ID.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Auth config name.
+</ResponseField>
+
+<ResponseField name="toolkit" type="{ slug: string; logo: string }">
+  The toolkit this auth config is for.
+</ResponseField>
+
+<ResponseField name="authScheme" type="string">
+  Authentication scheme (`OAUTH2`, `API_KEY`, etc.).
+</ResponseField>
+
+<ResponseField name="status" type='"ENABLED" | "DISABLED"'>
+  Whether this auth config is currently active.
+</ResponseField>
+
+<ResponseField name="isComposioManaged" type="boolean">
+  Whether Composio manages the OAuth app credentials.
+</ResponseField>
+
+<ResponseField name="noOfConnections" type="number">
+  Number of connected accounts using this auth config.
+</ResponseField>
+
+<ResponseField name="isEnabledForToolRouter" type="boolean">
+  Whether this auth config can be used in tool router sessions.
+</ResponseField>
+
+<ResponseField name="toolAccessConfig" type="object">
+  Per-auth-config tool access restrictions — `toolsAvailableForExecution` and `toolsForConnectedAccountCreation`.
+</ResponseField>
+
+## authConfigs.list()
+
+List auth configs with optional filtering.
+
+```typescript
+composio.authConfigs.list(query?: AuthConfigListParams): Promise<AuthConfigListResponse>
+```
+
+<ParamField body="query.toolkit" type="string" optional>
+  Filter by toolkit slug.
+</ParamField>
+
+<ParamField body="query.isComposioManaged" type="boolean" optional>
+  Filter to only Composio-managed or only custom auth configs.
+</ParamField>
+
+<ParamField body="query.cursor" type="string" optional>
+  Pagination cursor.
+</ParamField>
+
+<ParamField body="query.limit" type="number" optional>
+  Maximum items per page.
+</ParamField>
+
+### AuthConfigListResponse
+
+<ResponseField name="items" type="AuthConfigRetrieveResponse[]">
+  Auth configs for the current page.
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string | null">
+  Cursor for the next page.
+</ResponseField>
+
+<ResponseField name="totalPages" type="number">
+  Total number of pages.
+</ResponseField>
+
+## authConfigs.update()
+
+Update an existing auth config's credentials, scopes, or tool access settings.
+
+```typescript
+composio.authConfigs.update(
+  nanoid: string,
+  data: AuthConfigUpdateParams
+): Promise<AuthConfigUpdateResponse>
+```
+
+<ParamField body="data.type" type='"custom" | "default"' required>
+  `'custom'` to update credentials on a custom auth config. `'default'` to update scopes on a Composio-managed auth config.
+</ParamField>
+
+<ParamField body="data.credentials" type="object" optional>
+  New credentials. Only valid when `type: 'custom'`.
+</ParamField>
+
+<ParamField body="data.scopes" type="string" optional>
+  New OAuth scopes. Only valid when `type: 'default'`.
+</ParamField>
+
+<ParamField body="data.toolAccessConfig.toolsAvailableForExecution" type="string[]" optional>
+  Restrict which tools can be executed via connected accounts under this auth config.
+</ParamField>
+
+## authConfigs.delete()
+
+Permanently delete an auth config. This will prevent connected accounts that use this config from functioning.
+
+```typescript
+composio.authConfigs.delete(nanoid: string): Promise<AuthConfigDeleteResponse>
+```
+
+## authConfigs.enable() / disable()
+
+Enable or disable an auth config. Disabled auth configs cannot be used to create new connected accounts.
+
+```typescript
+composio.authConfigs.enable(nanoid: string): Promise<AuthConfigUpdateStatusResponse>
+composio.authConfigs.disable(nanoid: string): Promise<AuthConfigUpdateStatusResponse>
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="Custom GitHub OAuth app">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // Create a custom OAuth2 auth config with your own GitHub app
+    const authConfig = await composio.authConfigs.create('github', {
+      type: 'use_custom_auth',
+      authScheme: 'OAUTH2',
+      name: 'My GitHub OAuth App',
+      credentials: {
+        client_id: process.env.GITHUB_CLIENT_ID!,
+        client_secret: process.env.GITHUB_CLIENT_SECRET!,
+      },
+    });
+
+    console.log('Auth config created:', authConfig.id);
+
+    // Use it to initiate connections
+    const connectionRequest = await composio.connectedAccounts.link(
+      'user_123',
+      authConfig.id,
+      { callbackUrl: 'https://your-app.com/callback' }
+    );
+
+    console.log('OAuth URL:', connectionRequest.redirectUrl);
+    ```
+  </Tab>
+  <Tab title="API key auth config">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // Create an API key auth config
+    const authConfig = await composio.authConfigs.create('openai', {
+      type: 'use_custom_auth',
+      authScheme: 'API_KEY',
+      name: 'OpenAI API Key',
+      credentials: {
+        api_key: process.env.OPENAI_API_KEY!,
+      },
+    });
+
+    // Connect a user with this API key (no redirect needed)
+    const connectionRequest = await composio.connectedAccounts.initiate(
+      'user_123',
+      authConfig.id
+    );
+
+    const account = await connectionRequest.waitForConnection();
+    console.log('Connected:', account.id);
+    ```
+  </Tab>
+  <Tab title="List and inspect">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // List all GitHub auth configs
+    const { items } = await composio.authConfigs.list({ toolkit: 'github' });
+
+    for (const config of items) {
+      console.log(`${config.name} (${config.id}): ${config.status}`);
+      console.log(`  Connections: ${config.noOfConnections}`);
+      console.log(`  Composio-managed: ${config.isComposioManaged}`);
+    }
+    ```
+  </Tab>
+  <Tab title="Restrict tool access">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // Update an existing auth config to restrict tool access
+    await composio.authConfigs.update('auth_abc123', {
+      type: 'custom',
+      toolAccessConfig: {
+        toolsAvailableForExecution: [
+          'GITHUB_CREATE_ISSUE',
+          'GITHUB_LIST_PULL_REQUESTS',
+          'GITHUB_GET_REPOS',
+        ],
+      },
+    });
+    ```
+  </Tab>
+</Tabs>

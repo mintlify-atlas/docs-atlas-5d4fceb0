@@ -1,0 +1,322 @@
+---
+title: "ConnectedAccounts API — TypeScript SDK Reference"
+sidebarTitle: "Connected Accounts"
+description: "composio.connectedAccounts manages user connections to external apps. Use initiate() to start OAuth flows, list() to query connections, and waitForConnection() to confirm."
+---
+
+The `ConnectedAccounts` class manages authenticated connections between your users and external services. A connected account stores the OAuth tokens, API keys, or other credentials that Composio needs to execute tools on a user's behalf. Each connected account belongs to a user ID and an auth config, and has a `status` that reflects the current authentication state.
+
+## connectedAccounts.link()
+
+Create a Composio Connect Link — the recommended way to start an OAuth flow for Composio-managed auth configs. Returns a `ConnectionRequest` with a `redirectUrl` to send the user to.
+
+```typescript
+composio.connectedAccounts.link(
+  userId: string,
+  authConfigId: string,
+  options?: CreateConnectedAccountLinkOptions
+): Promise<ConnectionRequest>
+```
+
+<ParamField body="userId" type="string" required>
+  External user identifier from your database.
+</ParamField>
+
+<ParamField body="authConfigId" type="string" required>
+  Auth config ID to connect. Obtain this from `composio.authConfigs.list()` or the Composio dashboard.
+</ParamField>
+
+<ParamField body="options.callbackUrl" type="string" optional>
+  URL to redirect the user to after they complete the OAuth flow. Your server receives `?status=success` or `?status=failed` as a query parameter.
+</ParamField>
+
+<ParamField body="options.alias" type="string" optional>
+  Human-readable alias for this connection. Must be unique per `userId` and toolkit within your project.
+</ParamField>
+
+<ParamField body="options.allowMultiple" type="boolean" optional>
+  Allow creating multiple connections for the same user and auth config. When `false` (default), throws `ComposioMultipleConnectedAccountsError` if an active connection already exists.
+</ParamField>
+
+### ConnectionRequest
+
+<ResponseField name="id" type="string">
+  Connected account ID. Use this to poll for connection status.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status — one of `INITIALIZING`, `INITIATED`, `ACTIVE`, `FAILED`, `EXPIRED`, `INACTIVE`, or `REVOKED`.
+</ResponseField>
+
+<ResponseField name="redirectUrl" type="string | null">
+  URL to redirect the user to for OAuth flows. `null` for non-redirectable auth schemes (API key, basic auth).
+</ResponseField>
+
+<ResponseField name="waitForConnection" type="function">
+  Polls until the connection status becomes `ACTIVE` or a terminal error state. See below.
+</ResponseField>
+
+## connectedAccounts.initiate()
+
+Create a connected account directly. Use this for non-OAuth auth schemes (API key, bearer token, basic auth) or custom OAuth apps. For Composio-managed OAuth, prefer `link()`.
+
+<Warning>
+  The `initiate()` method is deprecated for Composio-managed OAuth auth configs (OAuth2, OAuth1, DCR_OAUTH). Composio is retiring the underlying endpoint. Use `link()` for all new OAuth integrations.
+</Warning>
+
+```typescript
+composio.connectedAccounts.initiate(
+  userId: string,
+  authConfigId: string,
+  options?: CreateConnectedAccountOptions
+): Promise<ConnectionRequest>
+```
+
+<ParamField body="userId" type="string" required>
+  External user identifier.
+</ParamField>
+
+<ParamField body="authConfigId" type="string" required>
+  Auth config ID to connect.
+</ParamField>
+
+<ParamField body="options.callbackUrl" type="string" optional>
+  OAuth callback URL.
+</ParamField>
+
+<ParamField body="options.config" type="ConnectionData" optional>
+  Pre-populated authentication credentials. Use with API key, bearer token, or basic auth configs to provide credentials at creation time without a redirect flow.
+</ParamField>
+
+<ParamField body="options.alias" type="string" optional>
+  Human-readable alias for this connection.
+</ParamField>
+
+<ParamField body="options.allowMultiple" type="boolean" optional>
+  Allow multiple connections per user per auth config. Defaults to `false`.
+</ParamField>
+
+## connectedAccounts.waitForConnection()
+
+Poll until a connected account reaches `ACTIVE` status or a terminal error state. Throws on timeout or failure.
+
+```typescript
+composio.connectedAccounts.waitForConnection(
+  connectedAccountId: string,
+  timeout?: number
+): Promise<ConnectedAccountRetrieveResponse>
+```
+
+<ParamField body="connectedAccountId" type="string" required>
+  ID of the connected account to poll.
+</ParamField>
+
+<ParamField body="timeout" type="number" optional>
+  Maximum time to wait in milliseconds. Defaults to `60000` (60 seconds).
+</ParamField>
+
+## connectedAccounts.get()
+
+Retrieve a connected account by its ID.
+
+```typescript
+composio.connectedAccounts.get(nanoid: string): Promise<ConnectedAccountRetrieveResponse>
+```
+
+### ConnectedAccountRetrieveResponse
+
+<ResponseField name="id" type="string">
+  Unique connected account identifier.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  One of `INITIALIZING`, `INITIATED`, `ACTIVE`, `FAILED`, `EXPIRED`, `INACTIVE`, `REVOKED`.
+</ResponseField>
+
+<ResponseField name="toolkit" type="{ slug: string }">
+  The toolkit this connection belongs to.
+</ResponseField>
+
+<ResponseField name="authConfig" type="object">
+  Auth config metadata including `id`, `authScheme`, `isComposioManaged`, and `isDisabled`.
+</ResponseField>
+
+<ResponseField name="state" type="ConnectionData">
+  The connection's auth state (tokens, API keys, etc.).
+</ResponseField>
+
+<ResponseField name="isDisabled" type="boolean">
+  Whether this connection has been manually disabled.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 creation timestamp.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  ISO 8601 last-updated timestamp.
+</ResponseField>
+
+## connectedAccounts.list()
+
+List connected accounts with optional filtering.
+
+```typescript
+composio.connectedAccounts.list(
+  query?: ConnectedAccountListParams
+): Promise<ConnectedAccountListResponse>
+```
+
+<ParamField body="query.userIds" type="string[]" optional>
+  Filter by user IDs.
+</ParamField>
+
+<ParamField body="query.toolkitSlugs" type="string[]" optional>
+  Filter by toolkit slugs (e.g. `['github']`).
+</ParamField>
+
+<ParamField body="query.authConfigIds" type="string[]" optional>
+  Filter by auth config IDs.
+</ParamField>
+
+<ParamField body="query.statuses" type="string[]" optional>
+  Filter by status values. Valid values: `INITIALIZING`, `INITIATED`, `ACTIVE`, `FAILED`, `EXPIRED`, `INACTIVE`, `REVOKED`.
+</ParamField>
+
+<ParamField body="query.cursor" type="string" optional>
+  Pagination cursor from a previous response.
+</ParamField>
+
+<ParamField body="query.limit" type="number" optional>
+  Maximum number of results per page.
+</ParamField>
+
+<ParamField body="query.orderBy" type="string" optional>
+  Sort field — `'created_at'` or `'updated_at'`.
+</ParamField>
+
+### ConnectedAccountListResponse
+
+<ResponseField name="items" type="ConnectedAccountRetrieveResponse[]">
+  Connected accounts for the current page.
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string | null">
+  Cursor for the next page. `null` when there are no more results.
+</ResponseField>
+
+<ResponseField name="totalPages" type="number">
+  Total number of pages.
+</ResponseField>
+
+## connectedAccounts.delete()
+
+Permanently delete a connected account. This action cannot be undone and revokes any associated access tokens.
+
+```typescript
+composio.connectedAccounts.delete(nanoid: string): Promise<ConnectedAccountDeleteResponse>
+```
+
+## connectedAccounts.refresh()
+
+Force a token refresh for a connected account. Useful when an OAuth token has expired or is about to expire.
+
+```typescript
+composio.connectedAccounts.refresh(
+  nanoid: string,
+  options?: ConnectedAccountRefreshOptions
+): Promise<ConnectedAccountRefreshResponse>
+```
+
+<ParamField body="options.redirectUrl" type="string" optional>
+  Redirect URL for re-authentication flows where the token cannot be refreshed silently.
+</ParamField>
+
+<ParamField body="options.validateCredentials" type="boolean" optional>
+  Validate the refreshed credentials against the upstream API before returning.
+</ParamField>
+
+## connectedAccounts.enable() / disable()
+
+Enable or disable a connected account without deleting it.
+
+```typescript
+composio.connectedAccounts.enable(nanoid: string): Promise<ConnectedAccountUpdateStatusResponse>
+composio.connectedAccounts.disable(nanoid: string): Promise<ConnectedAccountUpdateStatusResponse>
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="OAuth flow with link()">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // 1. Create an auth config (or use an existing one from the dashboard)
+    const authConfig = await composio.authConfigs.create('github', {
+      type: 'use_composio_managed_auth',
+      name: 'GitHub OAuth',
+    });
+
+    // 2. Initiate the connection — get a redirect URL
+    const connectionRequest = await composio.connectedAccounts.link(
+      'user_123',
+      authConfig.id,
+      { callbackUrl: 'https://your-app.com/auth/callback' }
+    );
+
+    console.log('Send the user to:', connectionRequest.redirectUrl);
+
+    // 3. After the user completes OAuth, wait for ACTIVE status
+    const account = await composio.connectedAccounts.waitForConnection(
+      connectionRequest.id,
+      120_000 // 2-minute timeout
+    );
+
+    console.log('Connected!', account.id, account.status);
+    ```
+  </Tab>
+  <Tab title="API key auth (no redirect)">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // Provide API key credentials directly — no OAuth redirect needed
+    const connectionRequest = await composio.connectedAccounts.initiate(
+      'user_123',
+      'your-api-key-auth-config-id',
+      {
+        config: {
+          val: {
+            authScheme: 'API_KEY',
+            apiKey: 'user-provided-api-key',
+          },
+        },
+      }
+    );
+
+    // For API key auth the account is ACTIVE immediately
+    const account = await connectionRequest.waitForConnection();
+    console.log('Account status:', account.status); // ACTIVE
+    ```
+  </Tab>
+  <Tab title="List active connections">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    const { items } = await composio.connectedAccounts.list({
+      userIds: ['user_123'],
+      statuses: ['ACTIVE'],
+    });
+
+    items.forEach(account => {
+      console.log(`${account.toolkit.slug}: ${account.id} (${account.status})`);
+    });
+    ```
+  </Tab>
+</Tabs>

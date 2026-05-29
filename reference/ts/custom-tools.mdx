@@ -1,0 +1,269 @@
+---
+title: "Custom Tools API — Composio TypeScript SDK Reference"
+sidebarTitle: "Custom Tools"
+description: "experimental_createTool() and experimental_createToolkit() define custom tools in TypeScript for use alongside Composio's built-in integrations."
+---
+
+Custom tools let you define TypeScript functions that work side-by-side with Composio's built-in integrations. Your custom tools are passed to a tool router session and exposed to agents with the same interface as native Composio tools — no extra wiring required. You can call other Composio tools from inside a custom tool's `execute` function using the injected `SessionContext`.
+
+<Note>
+  The `experimental_` prefix indicates these APIs may evolve in future releases. Breaking changes will be documented in the changelog.
+</Note>
+
+## Import
+
+```typescript
+import {
+  experimental_createTool,
+  experimental_createToolkit,
+} from '@composio/core/experimental';
+```
+
+## experimental_createTool()
+
+Define a single custom tool. The returned `CustomTool` object is passed to `composio.create()` inside `experimental.customTools`.
+
+```typescript
+experimental_createTool<T extends z.ZodType>(
+  slug: string,
+  options: CreateCustomToolParams<T>
+): CustomTool
+```
+
+<ParamField body="slug" type="string" required>
+  Unique tool identifier. Alphanumeric characters, underscores, and hyphens only. Must not start with `LOCAL_` (reserved) or `COMPOSIO_` (reserved). The SDK automatically prepends `LOCAL_` when exposing the tool to agents — so `'GREP'` becomes `LOCAL_GREP`.
+</ParamField>
+
+<ParamField body="options.name" type="string" required>
+  Human-readable tool name.
+</ParamField>
+
+<ParamField body="options.description" type="string" required>
+  Tool description shown to agents to help them decide when to call the tool.
+</ParamField>
+
+<ParamField body="options.inputParams" type="z.ZodObject" required>
+  Zod schema for input parameters. Must be a `z.object()`. Field descriptions in the schema are surfaced to agents as parameter documentation.
+</ParamField>
+
+<ParamField body="options.execute" type="function" required>
+  Async function that implements the tool's logic. Receives `(input, ctx)` where `input` is the validated Zod-inferred type and `ctx` is a `SessionContext`. Return a plain object — the SDK wraps it into the standard response format. Throw an error to signal failure.
+</ParamField>
+
+<ParamField body="options.extendsToolkit" type="string" optional>
+  Composio toolkit slug to inherit authentication from (e.g. `'gmail'`). When set, the tool's final slug becomes `LOCAL_GMAIL_TOOLNAME` and the execute function can call `ctx.execute()` to invoke other Gmail tools. Leave empty for tools that don't need Composio-managed auth.
+</ParamField>
+
+<ParamField body="options.outputParams" type="z.ZodType" optional>
+  Zod schema for the output. Used for documentation — not enforced at runtime.
+</ParamField>
+
+<ParamField body="options.preload" type="boolean" optional>
+  When `true`, include this tool in `session.tools()` so agents can call it without a search step. Defaults to `false`.
+</ParamField>
+
+## experimental_createToolkit()
+
+Group related custom tools into a named toolkit. Tools inside a toolkit must not have `extendsToolkit` set — they inherit the toolkit identity instead.
+
+```typescript
+experimental_createToolkit(
+  slug: string,
+  options: CreateCustomToolkitParams
+): CustomToolkit
+```
+
+<ParamField body="slug" type="string" required>
+  Unique toolkit identifier. The toolkit slug is included in each tool's final slug — for example, a toolkit `'DEV_TOOLS'` with a tool `'GREP'` produces `LOCAL_DEV_TOOLS_GREP`.
+</ParamField>
+
+<ParamField body="options.name" type="string" required>
+  Human-readable toolkit name.
+</ParamField>
+
+<ParamField body="options.description" type="string" required>
+  Toolkit description.
+</ParamField>
+
+<ParamField body="options.tools" type="CustomTool[]" required>
+  Array of tools created by `experimental_createTool()`. Must contain at least one tool. Tools must not have `extendsToolkit` set.
+</ParamField>
+
+<ParamField body="options.preload" type="boolean" optional>
+  Default `preload` value for all tools in this toolkit. Individual tool-level `preload` values override this default.
+</ParamField>
+
+## SessionContext
+
+The `ctx` parameter injected into every `execute` function at runtime.
+
+<ResponseField name="userId" type="string">
+  The user ID for the current session.
+</ResponseField>
+
+<ResponseField name="execute" type="function">
+  `(toolSlug: string, arguments_: Record<string, unknown>) => Promise<ToolRouterSessionExecuteResponse>`
+
+  Execute any Composio native tool from within your custom tool. Returns `{ data, error, logId }`. Throws on error.
+</ResponseField>
+
+<ResponseField name="proxyExecute" type="function">
+  `(params: SessionProxyExecuteParams) => Promise<ToolRouterSessionProxyExecuteResponse>`
+
+  Proxy an HTTP request through Composio's auth layer for the session's connected account. Useful for calling toolkit APIs not covered by existing tools.
+
+  <Expandable title="SessionProxyExecuteParams">
+    <ResponseField name="toolkit" type="string">
+      Toolkit slug whose connected account provides auth.
+    </ResponseField>
+    <ResponseField name="endpoint" type="string">
+      API endpoint URL.
+    </ResponseField>
+    <ResponseField name="method" type='"GET" | "POST" | "PUT" | "DELETE" | "PATCH"'>
+      HTTP method.
+    </ResponseField>
+    <ResponseField name="body" type="unknown">
+      Request body for POST/PUT/PATCH.
+    </ResponseField>
+    <ResponseField name="parameters" type="array">
+      Query params or headers — `{ in: 'query' | 'header', name: string, value: string | number }[]`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Slug naming rules
+
+| Context | Final slug format | Example |
+|---|---|---|
+| Standalone tool | `LOCAL_{SLUG}` | `LOCAL_GREP` |
+| Tool extending a toolkit | `LOCAL_{TOOLKIT}_{SLUG}` | `LOCAL_GMAIL_GET_IMPORTANT` |
+| Tool inside a custom toolkit | `LOCAL_{TOOLKIT}_{SLUG}` | `LOCAL_DEV_TOOLS_GREP` |
+
+The maximum final slug length is 60 characters. The SDK validates this at creation time.
+
+## Using custom tools in a session
+
+Pass custom tools and toolkits to `composio.create()` via `experimental.customTools` and `experimental.customToolkits`:
+
+```typescript
+const session = await composio.create('user_123', {
+  experimental: {
+    customTools: [myStandaloneTool],
+    customToolkits: [myToolkit],
+  },
+});
+```
+
+You can also retrieve registered custom tools from a live session:
+
+```typescript
+// List all custom tools in the session (with final slugs)
+const registeredTools = session.customTools();
+const registeredToolkits = session.customToolkits();
+```
+
+## Example
+
+```typescript
+import { Composio } from '@composio/core';
+import {
+  experimental_createTool,
+  experimental_createToolkit,
+} from '@composio/core/experimental';
+import { z } from 'zod';
+
+// ── 1. Define a standalone tool that extends Gmail auth ────────────────────
+const getImportantEmails = experimental_createTool('GET_IMPORTANT_EMAILS', {
+  name: 'Get Important Emails',
+  description: 'Fetch the most important unread emails from the inbox using Gmail search.',
+  extendsToolkit: 'gmail', // Inherits Gmail authentication
+  inputParams: z.object({
+    limit: z.number().int().min(1).max(50).default(10).describe('Number of emails to return'),
+    query: z
+      .string()
+      .optional()
+      .default('is:unread is:important')
+      .describe('Gmail search query'),
+  }),
+  execute: async (input, ctx) => {
+    // Call the native GMAIL_SEARCH tool via SessionContext
+    const searchResult = await ctx.execute('GMAIL_SEARCH', {
+      q: input.query,
+      maxResults: input.limit,
+      userId: 'me',
+    });
+
+    if (searchResult.error) {
+      throw new Error(`Gmail search failed: ${searchResult.error}`);
+    }
+
+    const messages = (searchResult.data?.messages as unknown[]) ?? [];
+    return { emails: messages, count: messages.length };
+  },
+});
+
+// ── 2. Define a standalone database tool (no auth needed) ─────────────────
+const lookupUser = experimental_createTool('LOOKUP_USER', {
+  name: 'Lookup User',
+  description: 'Look up a user record from the application database by email.',
+  inputParams: z.object({
+    email: z.string().email().describe('Email address to look up'),
+  }),
+  execute: async (input, ctx) => {
+    // Call your own database or internal API
+    const user = await myDatabase.findUserByEmail(input.email);
+    if (!user) {
+      throw new Error(`No user found with email ${input.email}`);
+    }
+    return { id: user.id, name: user.name, role: user.role };
+  },
+  preload: true, // Always expose in session.tools() without search
+});
+
+// ── 3. Group local tools into a toolkit ───────────────────────────────────
+const localDatabaseTool = experimental_createTool('DB_QUERY', {
+  name: 'Database Query',
+  description: 'Execute a read-only SQL query against the application database.',
+  inputParams: z.object({
+    query: z.string().describe('SQL SELECT query to execute'),
+    limit: z.number().int().min(1).max(100).default(20),
+  }),
+  execute: async (input) => {
+    const rows = await myDatabase.query(input.query, { limit: input.limit });
+    return { rows, rowCount: rows.length };
+  },
+});
+
+const appToolkit = experimental_createToolkit('APP_TOOLS', {
+  name: 'Application Tools',
+  description: 'Internal tools for querying and managing application data.',
+  tools: [localDatabaseTool],
+  preload: true,
+});
+
+// ── 4. Use custom tools in a session ──────────────────────────────────────
+const composio = new Composio();
+
+const session = await composio.create('user_123', {
+  toolkits: ['gmail', 'slack'],
+  experimental: {
+    customTools: [getImportantEmails, lookupUser],
+    customToolkits: [appToolkit],
+  },
+});
+
+// List registered tools (shows final slugs)
+console.log('Custom tools:', session.customTools().map(t => t.slug));
+// Output: LOCAL_GMAIL_GET_IMPORTANT_EMAILS, LOCAL_LOOKUP_USER, LOCAL_APP_TOOLS_DB_QUERY
+
+// Get provider-formatted tools including custom ones
+const tools = await session.tools();
+
+// Execute a custom tool directly
+const emailResult = await session.execute('LOCAL_GMAIL_GET_IMPORTANT_EMAILS', { limit: 5 });
+console.log('Emails:', emailResult.data);
+```
+
+<Tip>
+  Use `extendsToolkit` when your custom tool is a higher-level abstraction over an existing Composio integration. The user's Gmail connected account is automatically available to `ctx.execute()` calls — no extra auth setup needed.
+</Tip>

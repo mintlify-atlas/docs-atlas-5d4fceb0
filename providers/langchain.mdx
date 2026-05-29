@@ -1,0 +1,180 @@
+---
+title: "Composio with LangChain: Tool and Agent Integration"
+sidebarTitle: "LangChain"
+description: "Use Composio tools as LangChain StructuredTool objects in LCEL chains and LangGraph agents. Available for both Python and TypeScript."
+---
+
+Composio's LangChain provider returns tools as `DynamicStructuredTool` objects you can use directly in LCEL chains, LangGraph agents, and any LangChain agent executor. Tool execution is wired in automatically — LangChain calls the tool and Composio handles the API call behind the scenes.
+
+## Installation
+
+<Tabs>
+  <Tab title="TypeScript">
+    <CodeGroup>
+      ```bash npm
+      npm install @composio/core @composio/langchain @langchain/openai @langchain/langgraph @langchain/core
+      ```
+      ```bash yarn
+      yarn add @composio/core @composio/langchain @langchain/openai @langchain/langgraph @langchain/core
+      ```
+      ```bash pnpm
+      pnpm add @composio/core @composio/langchain @langchain/openai @langchain/langgraph @langchain/core
+      ```
+    </CodeGroup>
+  </Tab>
+  <Tab title="Python">
+    ```bash
+    pip install composio composio-langchain langchain langchain-openai
+    ```
+  </Tab>
+</Tabs>
+
+Set your API keys in a `.env` file:
+
+```txt .env
+COMPOSIO_API_KEY=your_composio_api_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+## Example
+
+<Tabs>
+  <Tab title="TypeScript">
+    The TypeScript example uses a LangGraph `StateGraph` to build a ReAct-style agentic loop. Composio tools are passed directly to `model.bindTools()` and to a `ToolNode` — no extra wiring needed.
+
+    ```typescript
+    import { ChatOpenAI } from '@langchain/openai';
+    import { HumanMessage, AIMessage } from '@langchain/core/messages';
+    import { ToolNode } from '@langchain/langgraph/prebuilt';
+    import { StateGraph, MessagesAnnotation } from '@langchain/langgraph';
+    import { Composio } from '@composio/core';
+    import { LangchainProvider } from '@composio/langchain';
+    import 'dotenv/config';
+
+    const composio = new Composio({
+      apiKey: process.env.COMPOSIO_API_KEY,
+      provider: new LangchainProvider(),
+    });
+
+    // Tools are returned as DynamicStructuredTool[] — LangChain's native format
+    const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER');
+
+    const toolNode = new ToolNode(tools);
+
+    const model = new ChatOpenAI({
+      model: 'gpt-4o-mini',
+      temperature: 0,
+    }).bindTools(tools);
+
+    function shouldContinue({ messages }: typeof MessagesAnnotation.State) {
+      const lastMessage = messages[messages.length - 1] as AIMessage;
+      return lastMessage.tool_calls?.length ? 'tools' : '__end__';
+    }
+
+    async function callModel(state: typeof MessagesAnnotation.State) {
+      const response = await model.invoke(state.messages);
+      return { messages: [response] };
+    }
+
+    const workflow = new StateGraph(MessagesAnnotation)
+      .addNode('agent', callModel)
+      .addEdge('__start__', 'agent')
+      .addNode('tools', toolNode)
+      .addEdge('tools', 'agent')
+      .addConditionalEdges('agent', shouldContinue);
+
+    const app = workflow.compile();
+
+    const finalState = await app.invoke({
+      messages: [new HumanMessage('Find the details of the user `pg` on HackerNews')],
+    });
+
+    console.log(finalState.messages[finalState.messages.length - 1].content);
+    ```
+  </Tab>
+  <Tab title="Python">
+    The Python example uses `create_agent` from LangChain to build a simple agent with tool-calling capability.
+
+    ```python
+    from composio import Composio
+    from composio_langchain import LangchainProvider
+    from langchain.agents import create_agent
+    from langchain_openai import ChatOpenAI
+
+    openai_client = ChatOpenAI(model="gpt-4o-mini")
+    composio = Composio(provider=LangchainProvider())
+
+    # Tools are returned as LangChain StructuredTool objects
+    tools = composio.tools.get(user_id="default", toolkits=["GITHUB"])
+
+    task = "Star the composiohq/composio repository on GitHub"
+
+    agent = create_agent(
+        model=openai_client,
+        tools=tools,
+        system_prompt="You are a helpful assistant with GitHub access.",
+    )
+
+    result = agent.invoke({"messages": [{"role": "user", "content": task}]})
+    print(result["messages"][-1].content)
+    ```
+  </Tab>
+</Tabs>
+
+## LangGraph
+
+The same `DynamicStructuredTool` objects work directly in LangGraph agents. Wrap them with `ToolNode` and add conditional edges to build a standard ReAct loop, as shown in the TypeScript example above.
+
+For Python LangGraph, use the dedicated `composio-langgraph` package and `LanggraphProvider`:
+
+```python
+from composio import Composio
+from composio_langgraph import LanggraphProvider
+from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
+
+composio = Composio(provider=LanggraphProvider())
+llm = ChatOpenAI(model="gpt-4o-mini")
+
+session = composio.create(user_id="user_123")
+tools = session.tools()
+
+agent = create_agent(tools=tools, model=llm)
+result = agent.invoke({"messages": [{"role": "user", "content": "Star composiohq/composio on GitHub"}]})
+print(result["messages"][-1].content)
+```
+
+<Tip>
+  Install the LangGraph Python provider with `pip install composio composio-langgraph langgraph langchain-openai`.
+</Tip>
+
+## Multi-turn conversations
+
+Create a session once and reuse it across turns so your agent keeps the same connected accounts and session context:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    // First turn — create a session and store the ID
+    const session = await composio.create('user_123');
+    const sessionId = session.sessionId;
+
+    const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER');
+
+    // Subsequent turns — retrieve the existing session
+    const existingSession = await composio.use(sessionId);
+    const sameTools = await existingSession.tools();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    # First turn — create a session and store the ID
+    session = composio.create(user_id="user_123")
+    session_id = session.session_id
+
+    # Subsequent turns — retrieve the existing session
+    session = composio.use(session_id)
+    tools = session.tools()
+    ```
+  </Tab>
+</Tabs>

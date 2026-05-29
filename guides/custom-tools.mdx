@@ -1,0 +1,312 @@
+---
+title: "Creating Custom Tools and Toolkits in Composio"
+sidebarTitle: "Custom Tools"
+description: "Define your own tools with TypeScript or Python functions and use them alongside Composio's built-in integrations within any session or agent."
+---
+
+Custom tools let you define your own actions — database queries, internal API calls, calculations, or any logic your agent needs — that work alongside Composio's 1000+ built-in tools. Both the TypeScript and Python SDKs support custom tools with full type safety through Zod schemas and Pydantic models, respectively. Custom tools live in memory for the duration of the session and are never persisted to Composio's backend.
+
+## Creating a custom tool (TypeScript)
+
+Use `experimental_createTool` from `@composio/core` to define a standalone custom tool. The `slug` you provide is automatically prefixed with `LOCAL_` when exposed to the agent (for example, `CALCULATE_SQUARE` becomes `LOCAL_CALCULATE_SQUARE`).
+
+<Note>
+Custom tool factory functions are prefixed `experimental_` in TypeScript because the API surface may evolve. The underlying session-based execution is stable.
+</Note>
+
+```typescript
+import { Composio, experimental_createTool } from "@composio/core";
+import { z } from "zod";
+
+const calculateSquare = experimental_createTool("CALCULATE_SQUARE", {
+  name: "Calculate Square",
+  description: "Returns the square of a given number",
+  inputParams: z.object({
+    number: z.number().describe("The number to square"),
+  }),
+  execute: async (input) => {
+    const result = input.number * input.number;
+    return { result };
+  },
+});
+```
+
+To build a tool that inherits a Composio toolkit's auth context (for example, calling the GitHub API with the user's connected account credentials), use `extendsToolkit`:
+
+```typescript
+import { experimental_createTool } from "@composio/core";
+import { z } from "zod";
+
+const starComposioRepo = experimental_createTool("STAR_COMPOSIO_REPO", {
+  name: "Star Composio Repository",
+  description: "Stars the composiohq/composio repository on GitHub",
+  extendsToolkit: "github",
+  inputParams: z.object({
+    repository: z.string().describe("The repository name to star"),
+  }),
+  execute: async (input, ctx) => {
+    // ctx.execute lets you call any Composio tool within the same session,
+    // inheriting the user's connected GitHub account credentials.
+    const result = await ctx.execute("GITHUB_STAR_REPO_FOR_AUTHENTICATED_USER", {
+      owner: "composiohq",
+      repo: input.repository,
+    });
+    return { data: result.data };
+  },
+});
+```
+
+## Creating a custom tool (Python)
+
+In Python, use the `@composio.tools.custom_tool` decorator. The function's docstring becomes the tool description, and the Pydantic model defines input parameters.
+
+```python
+from pydantic import BaseModel, Field
+from composio import Composio
+
+composio = Composio()
+
+
+class AddTwoNumbersInput(BaseModel):
+    a: int = Field(..., description="The first number to add")
+    b: int = Field(..., description="The second number to add")
+
+
+@composio.tools.custom_tool
+def add_two_numbers(request: AddTwoNumbersInput) -> int:
+    """Add two numbers."""
+    return request.a + request.b
+```
+
+To create a tool that uses a connected account from an existing toolkit, pass the toolkit slug to the decorator. The `execute_request` helper lets you make authenticated API calls through Composio's proxy:
+
+```python
+from pydantic import BaseModel, Field
+from composio import Composio
+from composio.types import ExecuteRequestFn
+
+composio = Composio()
+
+
+class GetIssueInfoInput(BaseModel):
+    issue_number: int = Field(..., description="The GitHub issue number")
+
+
+@composio.tools.custom_tool(toolkit="github")
+def get_issue_info(
+    request: GetIssueInfoInput,
+    execute_request: ExecuteRequestFn,
+    auth_credentials: dict,
+) -> dict:
+    """Get information about a GitHub issue using the user's connected account."""
+    response = execute_request(
+        endpoint=f"/repos/composiohq/composio/issues/{request.issue_number}",
+        method="GET",
+        parameters=[
+            {
+                "name": "Authorization",
+                "value": f"Bearer {auth_credentials['access_token']}",
+                "type": "header",
+            },
+        ],
+    )
+    return {"data": response.data}
+```
+
+## Creating a custom toolkit
+
+Group related tools into a **custom toolkit** using `experimental_createToolkit` (TypeScript) or by passing multiple decorated functions (Python). A toolkit gives tools a shared namespace: a tool `GREP` inside toolkit `DEV_TOOLS` is exposed to the agent as `LOCAL_DEV_TOOLS_GREP`.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { experimental_createTool, experimental_createToolkit } from "@composio/core";
+import { z } from "zod";
+
+const grepTool = experimental_createTool("GREP", {
+  name: "Grep Search",
+  description: "Search for a pattern in text",
+  inputParams: z.object({
+    pattern: z.string().describe("The regex pattern to search for"),
+    text: z.string().describe("The text to search in"),
+  }),
+  execute: async (input) => {
+    const lines = input.text
+      .split("\n")
+      .filter((line) => new RegExp(input.pattern).test(line));
+    return { matches: lines };
+  },
+});
+
+const wordCountTool = experimental_createTool("WORD_COUNT", {
+  name: "Word Count",
+  description: "Count the number of words in a string",
+  inputParams: z.object({
+    text: z.string().describe("The text to count words in"),
+  }),
+  execute: async (input) => {
+    const count = input.text.trim().split(/\s+/).length;
+    return { count };
+  },
+});
+
+const devTools = experimental_createToolkit("DEV_TOOLS", {
+  name: "Dev Tools",
+  description: "Local development utilities",
+  tools: [grepTool, wordCountTool],
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+# In Python, group tools by registering them all with the same session.
+# Pass multiple custom tools together when fetching tools from a session.
+from pydantic import BaseModel, Field
+from composio import Composio
+
+composio = Composio()
+
+
+class GrepInput(BaseModel):
+    pattern: str = Field(..., description="The pattern to search for")
+    text: str = Field(..., description="The text to search in")
+
+
+@composio.tools.custom_tool
+def grep_tool(request: GrepInput) -> dict:
+    """Search for a pattern in text and return matching lines."""
+    import re
+    matches = [line for line in request.text.split("\n") if re.search(request.pattern, line)]
+    return {"matches": matches}
+
+
+class WordCountInput(BaseModel):
+    text: str = Field(..., description="The text to count words in")
+
+
+@composio.tools.custom_tool
+def word_count(request: WordCountInput) -> dict:
+    """Count the number of words in a string."""
+    count = len(request.text.strip().split())
+    return {"count": count}
+```
+</Tab>
+</Tabs>
+
+## Using custom tools in a session
+
+Pass custom tools and toolkits to the session via the `experimental` config key when calling `composio.create()`. They're available alongside all standard Composio tools in `session.tools()`.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio, experimental_createTool, experimental_createToolkit } from "@composio/core";
+import { OpenAIAgentsProvider } from "@composio/openai-agents";
+import { z } from "zod";
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new OpenAIAgentsProvider(),
+});
+
+// Standalone custom tool
+const calculateSquare = experimental_createTool("CALCULATE_SQUARE", {
+  name: "Calculate Square",
+  description: "Returns the square of a given number",
+  inputParams: z.object({ number: z.number() }),
+  execute: async (input) => ({ result: input.number * input.number }),
+});
+
+// Create a session with the custom tool included
+const session = await composio.create("user_123", {
+  toolkits: ["gmail", "github"],
+  experimental: {
+    customTools: [calculateSquare],
+    // customToolkits: [devTools],  // pass toolkits here
+  },
+});
+
+// All tools — built-in and custom — are available together
+const tools = await session.tools();
+```
+</Tab>
+<Tab value="Python">
+```python
+from composio import Composio
+from pydantic import BaseModel, Field
+
+composio = Composio(api_key="your_api_key")
+
+
+class SquareInput(BaseModel):
+    number: float = Field(..., description="The number to square")
+
+
+@composio.tools.custom_tool
+def calculate_square(request: SquareInput) -> dict:
+    """Returns the square of a given number."""
+    return {"result": request.number ** 2}
+
+
+# Custom tools registered via the decorator are available in session tools
+session = composio.create(user_id="user_123")
+tools = session.tools()
+```
+</Tab>
+</Tabs>
+
+## Tool parameters
+
+Input parameters are validated at call time using the schema you define.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+**TypeScript uses [Zod](https://zod.dev/) schemas.** Pass a `z.object()` to `inputParams`. Descriptions are embedded with `.describe()` and appear in the tool's schema exposed to the LLM:
+
+```typescript
+import { z } from "zod";
+
+const inputParams = z.object({
+  query: z.string().describe("The search query"),
+  limit: z.number().int().min(1).max(100).default(10).describe("Max results"),
+  includeArchived: z.boolean().optional().describe("Include archived results"),
+});
+```
+
+The SDK converts the Zod schema to JSON Schema automatically and attaches it to the tool definition sent to the LLM.
+</Tab>
+<Tab value="Python">
+**Python uses [Pydantic](https://docs.pydantic.dev/) models.** Define a `BaseModel` subclass and use `Field` to add descriptions and validation:
+
+```python
+from pydantic import BaseModel, Field
+
+
+class SearchInput(BaseModel):
+    query: str = Field(..., description="The search query")
+    limit: int = Field(10, ge=1, le=100, description="Max results to return")
+    include_archived: bool = Field(False, description="Include archived results")
+```
+
+The Pydantic model schema is serialized to JSON Schema and included in the tool definition.
+</Tab>
+</Tabs>
+
+<Tip>
+Keep tool descriptions concise and action-oriented. The LLM uses the description to decide when to call the tool, so clarity here directly affects agent accuracy.
+</Tip>
+
+<CardGroup cols={2}>
+  <Card title="Tools and Toolkits" href="/concepts/tools-and-toolkits">
+    How built-in tools and toolkits work in Composio
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    Configure sessions to control which tools are available
+  </Card>
+  <Card title="Tool Router" href="/guides/tool-router">
+    Use semantic search to surface relevant tools at runtime
+  </Card>
+  <Card title="TypeScript SDK Reference" href="/reference/ts/composio">
+    Full API reference for the TypeScript SDK
+  </Card>
+</CardGroup>

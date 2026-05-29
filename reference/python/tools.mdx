@@ -1,0 +1,257 @@
+---
+title: "Tools API — Composio Python SDK Reference"
+sidebarTitle: "Tools"
+description: "composio.tools provides get() to retrieve tools for your AI provider and execute() to run tools directly. Supports modifiers for transforming inputs and outputs."
+---
+
+`composio.tools` is the primary interface for fetching and executing Composio tools. Call `get()` to retrieve provider-wrapped tool schemas ready to pass to your LLM, and `execute()` to invoke a tool directly with a dictionary of arguments. Both methods support an optional `modifiers` list for intercepting and transforming inputs, outputs, and tool schemas.
+
+## `tools.get()`
+
+Retrieve a collection of tools wrapped for your configured provider. The return type is automatically inferred from the provider — for `OpenAIProvider` it is `list[ChatCompletionToolParam]`, for `AnthropicProvider` it is `list[ToolParam]`, and so on.
+
+```python
+def get(
+    user_id: str,
+    *,
+    slug: str | None = None,
+    tools: list[str] | None = None,
+    search: str | None = None,
+    toolkits: list[str] | None = None,
+    scopes: list[str] | None = None,
+    modifiers: Modifiers | None = None,
+    limit: int | None = None,
+) -> TToolCollection
+```
+
+<ParamField path="user_id" type="str" required>
+  The external user ID to scope tool fetching to. Used by agentic providers to bind tool execution to the correct connected accounts.
+</ParamField>
+
+<ParamField path="slug" type="str" optional>
+  Fetch a single tool by its slug (e.g. `"GITHUB_CREATE_ISSUE"`). Mutually exclusive with `tools`, `search`, and `toolkits`.
+</ParamField>
+
+<ParamField path="tools" type="list[str]" optional>
+  Fetch a specific set of tools by slug list. At least one of `tools`, `search`, or `toolkits` must be provided.
+</ParamField>
+
+<ParamField path="search" type="str" optional>
+  Free-text search across tool names and descriptions. Returns the most semantically relevant matches.
+</ParamField>
+
+<ParamField path="toolkits" type="list[str]" optional>
+  Fetch all tools from one or more toolkits (e.g. `["github", "gmail"]`).
+</ParamField>
+
+<ParamField path="scopes" type="list[str]" optional>
+  Filter tools to those requiring specific OAuth scopes. Useful for showing only the tools a user's connection supports.
+</ParamField>
+
+<ParamField path="modifiers" type="Modifiers" optional>
+  A list of `Modifier` objects produced by the `@schema_modifier`, `@before_execute`, or `@after_execute` decorators. Schema modifiers are applied during `get()`; execute modifiers are applied lazily at execution time (for agentic providers).
+</ParamField>
+
+<ParamField path="limit" type="int" optional>
+  Maximum number of tools to return. Defaults to the API's page size.
+</ParamField>
+
+## `tools.execute()`
+
+Execute a specific tool by slug with a dictionary of arguments. Returns a `ToolExecutionResponse` TypedDict.
+
+```python
+def execute(
+    slug: str,
+    arguments: dict,
+    *,
+    connected_account_id: str | None = None,
+    custom_auth_params: tool_execute_params.CustomAuthParams | None = None,
+    custom_connection_data: tool_execute_params.CustomConnectionData | None = None,
+    user_id: str | None = None,
+    text: str | None = None,
+    version: str | None = None,
+    dangerously_skip_version_check: bool | None = None,
+    modifiers: Modifiers | None = None,
+) -> ToolExecutionResponse
+```
+
+<ParamField path="slug" type="str" required>
+  The tool slug in `SCREAMING_SNAKE_CASE` (e.g. `"GITHUB_CREATE_ISSUE"`). Custom tools use whatever slug they were registered under.
+</ParamField>
+
+<ParamField path="arguments" type="dict" required>
+  Tool input arguments as a plain Python dictionary. Keys and value types must match the tool's input schema.
+</ParamField>
+
+<ParamField path="connected_account_id" type="str" optional>
+  The ID of the connected account (`ca_xxx`) to use for authentication. When omitted, the backend selects the active connection for the given `user_id`.
+</ParamField>
+
+<ParamField path="custom_auth_params" type="CustomAuthParams" optional>
+  Provide custom auth parameters (headers, query params) for tools that accept bring-your-own credentials. Overridden by `custom_connection_data` when both are supplied.
+</ParamField>
+
+<ParamField path="custom_connection_data" type="CustomConnectionData" optional>
+  Full custom connection data for tools that support it. Takes priority over `custom_auth_params`.
+</ParamField>
+
+<ParamField path="user_id" type="str" optional>
+  The external user ID. Used when `connected_account_id` is not specified to look up the user's active connection.
+</ParamField>
+
+<ParamField path="text" type="str" optional>
+  Optional natural-language context passed to the tool alongside structured arguments.
+</ParamField>
+
+<ParamField path="version" type="str" optional>
+  Override the toolkit version for this execution only (e.g. `"20250906_01"`). Falls back to the instance-level `toolkit_versions` configuration, then to `"latest"`.
+</ParamField>
+
+<ParamField path="dangerously_skip_version_check" type="bool" optional>
+  Skip the version-check guard that prevents executing tools pinned to `"latest"`. Only safe in agentic loops where you fetched schemas and executed within the same version context.
+</ParamField>
+
+<ParamField path="modifiers" type="Modifiers" optional>
+  A list of `Modifier` objects for `@before_execute`, `@after_execute`, and `@before_file_upload` hooks applied around this specific execution.
+</ParamField>
+
+### ToolExecutionResponse
+
+`execute()` returns a `ToolExecutionResponse` TypedDict with three fields:
+
+<ResponseField name="data" type="dict" required>
+  The tool's output data. Shape varies per tool — consult the individual tool's output schema.
+</ResponseField>
+
+<ResponseField name="error" type="str | None" required>
+  Error message string when execution failed, `None` on success.
+</ResponseField>
+
+<ResponseField name="successful" type="bool" required>
+  `True` when the tool executed without an error, `False` otherwise.
+</ResponseField>
+
+## Modifiers
+
+Modifiers intercept and transform tool schemas, inputs, and outputs. Import the decorator factories from `composio`:
+
+```python
+from composio import before_execute, after_execute, schema_modifier, before_file_upload
+```
+
+### `@before_execute`
+
+Called with `(tool: str, toolkit: str, params: ToolExecuteParams)` before each tool call. Return a modified `ToolExecuteParams` to override arguments, version, or connected account.
+
+```python
+@before_execute
+def log_request(tool: str, toolkit: str, params: ToolExecuteParams) -> ToolExecuteParams:
+    print(f"Executing {tool} from {toolkit} with args: {params['arguments']}")
+    return params
+```
+
+### `@after_execute`
+
+Called with `(tool: str, toolkit: str, response: ToolExecutionResponse)` after each tool call. Return a modified `ToolExecutionResponse` to post-process results.
+
+```python
+@after_execute
+def log_response(tool: str, toolkit: str, response: ToolExecutionResponse) -> ToolExecutionResponse:
+    if not response["successful"]:
+        print(f"Tool {tool} failed: {response['error']}")
+    return response
+```
+
+### `@schema_modifier`
+
+Called with `(tool: str, toolkit: str, schema: Tool)` when schemas are fetched. Return a modified `Tool` to rewrite descriptions, hide parameters, or add defaults.
+
+```python
+@schema_modifier
+def simplify_schema(tool: str, toolkit: str, schema: Tool) -> Tool:
+    schema.description = schema.description[:200]  # truncate long descriptions
+    return schema
+```
+
+### `@before_file_upload`
+
+Called before a local file path or URL is staged for upload. The hook receives a `BeforeFileUploadContext` dict with `path`, `source` (`"path"` or `"url"`), `tool`, and `toolkit`. Return a new path/URL string to substitute, or `False` to abort.
+
+```python
+@before_file_upload
+def validate_upload(context: BeforeFileUploadContext) -> str | bool:
+    if context["source"] == "path" and not context["path"].startswith("/safe/dir"):
+        return False  # reject the upload
+    return context["path"]
+```
+
+### Scoping modifiers to specific tools or toolkits
+
+Pass `tools=` or `toolkits=` to limit a modifier's scope:
+
+```python
+@before_execute(toolkits=["github"])
+def github_only(tool, toolkit, params):
+    params["arguments"]["extra_header"] = "my-value"
+    return params
+```
+
+## Complete example with OpenAI
+
+```python
+import os
+from openai import OpenAI
+from composio import Composio, after_execute, schema_modifier
+from composio.core.models.tools import ToolExecutionResponse
+from composio.client.types import Tool
+
+composio = Composio(api_key=os.environ["COMPOSIO_API_KEY"])
+openai_client = OpenAI()
+
+USER_ID = "user_123"
+
+# Define modifiers
+@schema_modifier
+def trim_description(tool: str, toolkit: str, schema: Tool) -> Tool:
+    if schema.description and len(schema.description) > 300:
+        schema.description = schema.description[:300] + "…"
+    return schema
+
+@after_execute
+def check_result(tool: str, toolkit: str, response: ToolExecutionResponse) -> ToolExecutionResponse:
+    if not response["successful"]:
+        print(f"[WARN] {tool} failed: {response['error']}")
+    return response
+
+# Fetch GitHub tools
+tools = composio.tools.get(
+    user_id=USER_ID,
+    toolkits=["github"],
+    modifiers=[trim_description, check_result],
+    limit=20,
+)
+
+# Run an agentic loop
+messages = [{"role": "user", "content": "List my open GitHub issues"}]
+response = openai_client.chat.completions.create(
+    model="gpt-4o",
+    tools=tools,
+    messages=messages,
+)
+
+# Execute any tool calls
+for tool_call in response.choices[0].message.tool_calls or []:
+    import json
+    result = composio.tools.execute(
+        slug=tool_call.function.name,
+        arguments=json.loads(tool_call.function.arguments),
+        user_id=USER_ID,
+        modifiers=[check_result],
+    )
+    print(result["data"])
+```
+
+<Note>
+  For agentic providers like `OpenAIProvider`, the execute loop is handled automatically when you pass `user_id` to `tools.get()`. You only need to call `tools.execute()` directly when building non-agentic or custom execution flows.
+</Note>

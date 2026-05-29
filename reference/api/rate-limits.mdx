@@ -1,0 +1,174 @@
+---
+title: "Composio API Rate Limits and Quotas"
+sidebarTitle: "Rate Limits"
+description: "Composio enforces rate limits on API requests. Learn about the limit headers, retry strategies, and how to stay within your plan's quotas."
+---
+
+Composio enforces rate limits on API requests to ensure fair use and platform stability. Limits are enforced per organization on a rolling 10-minute window. When you exceed a limit, the API returns a `429 Too Many Requests` status with headers that tell you exactly when to retry.
+
+## Rate limits by plan
+
+| Plan | Requests per 10 minutes |
+|---|---|
+| Starter | 20,000 |
+| Hobby | 20,000 |
+| Growth | 100,000 |
+| Enterprise | Unlimited |
+
+All authenticated API endpoints share your organization's rate limit — tool execution, connected accounts, triggers, and every other operation count against the same quota.
+
+## Rate limit headers
+
+Every API response includes headers to help you track your usage:
+
+| Header | Description |
+|---|---|
+| `X-RateLimit` | Total requests allowed in the current window. |
+| `X-RateLimit-Remaining` | Requests remaining in the current window. |
+| `X-RateLimit-Window-Size` | Length of the window (e.g. `600s` for 600 seconds). |
+| `Retry-After` | Seconds until the window resets. Only present on `429` responses. |
+
+## Handling 429 errors
+
+When the API returns `429`, read the `Retry-After` header and pause before retrying. Implement exponential backoff with jitter to avoid thundering-herd problems when multiple processes are affected simultaneously.
+
+<CodeGroup>
+
+```python python
+import time
+import random
+import requests
+
+def call_with_backoff(url: str, headers: dict, max_retries: int = 5) -> dict:
+    for attempt in range(max_retries):
+        response = requests.get(url, headers=headers)
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", 60))
+            # Exponential backoff with full jitter
+            wait = min(retry_after, (2 ** attempt) + random.random())
+            print(f"Rate limited. Waiting {wait:.1f}s before retry {attempt + 1}/{max_retries}")
+            time.sleep(wait)
+            continue
+        response.raise_for_status()
+        return response.json()
+    raise RuntimeError("Max retries exceeded")
+
+data = call_with_backoff(
+    "https://backend.composio.dev/api/v3.1/tools",
+    headers={"x-api-key": "your_api_key"},
+)
+```
+
+```typescript typescript
+async function callWithBackoff(
+  url: string,
+  headers: Record<string, string>,
+  maxRetries = 5,
+): Promise<unknown> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(url, { headers });
+    if (response.status === 429) {
+      const retryAfter = parseInt(response.headers.get("Retry-After") ?? "60");
+      // Exponential backoff with full jitter
+      const wait = Math.min(retryAfter, 2 ** attempt + Math.random()) * 1000;
+      console.log(`Rate limited. Waiting ${(wait / 1000).toFixed(1)}s before retry ${attempt + 1}/${maxRetries}`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      continue;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+  throw new Error("Max retries exceeded");
+}
+
+const data = await callWithBackoff(
+  "https://backend.composio.dev/api/v3.1/tools",
+  { "x-api-key": process.env.COMPOSIO_API_KEY! },
+);
+```
+
+</CodeGroup>
+
+### Rate limit error response body
+
+```json
+{
+  "message": "Rate limit exceeded. Limit: 100000 requests per 10 minutes"
+}
+```
+
+## SDK retry behavior
+
+The Composio Python and TypeScript SDKs have built-in retry logic with exponential backoff. Configure the retry count via the `max_retries` constructor parameter — the default is `3`.
+
+```python
+from composio import Composio
+
+composio = Composio(
+    api_key="your_api_key",
+    max_retries=5,   # retry up to 5 times on transient errors and 429s
+    timeout=30,      # per-request timeout in seconds
+)
+```
+
+The SDK retries automatically on `429` responses and network-level transient failures (`5xx` status codes, connection resets). It reads the `Retry-After` header and waits the indicated duration before each retry.
+
+<Note>
+  SDK retries are transparent — your code does not need to handle `429` errors explicitly when using the SDK. Add your own retry layer only when calling the REST API directly.
+</Note>
+
+## Pagination
+
+List endpoints return paginated results using cursor-based pagination. Avoid fetching all pages at once when you only need recent items — use `limit` to cap each page and stop once you have what you need.
+
+```python
+import os
+from composio import Composio
+
+composio = Composio(api_key=os.environ["COMPOSIO_API_KEY"])
+
+# Fetch first page of connected accounts
+page = composio.connected_accounts.list(limit=50)
+accounts = list(page.items)
+
+# Fetch subsequent pages using next_cursor
+while page.next_cursor:
+    page = composio.connected_accounts.list(
+        limit=50,
+        cursor=page.next_cursor,
+    )
+    accounts.extend(page.items)
+```
+
+For the REST API, pass the `cursor` query parameter:
+
+```bash
+# First page
+curl "https://backend.composio.dev/api/v3.1/connected_accounts?limit=50" \
+  -H "x-api-key: $COMPOSIO_API_KEY"
+
+# Next page
+curl "https://backend.composio.dev/api/v3.1/connected_accounts?limit=50&cursor=eyJpZCI6ImNhX..." \
+  -H "x-api-key: $COMPOSIO_API_KEY"
+```
+
+<Tip>
+  Use the SDK pagination helpers (pass `next_cursor` through `cursor=`) rather than fetching all pages in parallel. Parallel pagination requests consume your rate limit budget faster than sequential ones.
+</Tip>
+
+## Best practices
+
+1. **Monitor remaining quota** — check `X-RateLimit-Remaining` in responses and add alerting before you reach zero.
+2. **Cache tool schemas** — tool definitions rarely change. Cache the output of `tools.get()` locally and refresh on a schedule rather than fetching on every request.
+3. **Use `limit` on list endpoints** — don't fetch more pages than you need.
+4. **Prefer SDK retries** — the SDK handles `429` backoff automatically. Use `max_retries` rather than reimplementing retry logic.
+5. **Pin toolkit versions** — using `toolkit_versions` prevents unintended fetches when a new version is released and keeps schema caches valid longer.
+
+## Need higher limits?
+
+If you regularly hit rate limits, consider upgrading your plan. For high-volume workloads or custom limits, [contact us](https://calendly.com/composiohq/enterprise).
+
+## Related pages
+
+- [Authentication](/reference/api/authentication) — how to authenticate API requests
+- [API Overview](/reference/api/overview) — base URL, resource list, and error shapes

@@ -1,0 +1,198 @@
+---
+title: "File Uploads and Downloads in Composio"
+sidebarTitle: "File Handling"
+description: "Composio handles file upload and download during tool execution, with configurable path allowlists and sensitive file protection enabled by default."
+---
+
+Some tools need to upload files — attaching a PDF to an email, pushing a diff to a GitHub PR — or download them — exporting a Google Sheet, retrieving a document from Notion. Composio provides secure file handling that integrates transparently with tool execution, with automatic path validation and opt-in auto-upload. By default, automatic file handling is disabled so that no file leaves your machine without an explicit decision from you.
+
+## Enabling auto file handling
+
+Automatic file upload and download during tool execution is disabled by default. Enable it by passing `dangerouslyAllowAutoUploadDownloadFiles: true` when initializing the Composio client:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio } from "@composio/core";
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  dangerouslyAllowAutoUploadDownloadFiles: true,
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+from composio import Composio
+
+composio = Composio(
+    api_key="your_api_key",
+    dangerously_allow_auto_upload_download_files=True,
+)
+```
+</Tab>
+</Tabs>
+
+<Warning>
+The `dangerouslyAllowAutoUploadDownloadFiles` flag is intentionally named to signal risk. When enabled, the SDK may read files from your filesystem and upload them to Composio's storage during tool execution. Always configure `fileUploadDirs` and keep `sensitiveFileUploadProtection` enabled.
+</Warning>
+
+## File upload allowlist
+
+By default, only `~/.composio/temp` is an allowed source directory for automatic uploads. Configure the allowlist using `fileUploadDirs` (TypeScript) or `file_upload_dirs` (Python):
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  dangerouslyAllowAutoUploadDownloadFiles: true,
+  fileUploadDirs: [
+    "/tmp/myapp",
+    "/home/user/uploads",
+  ],
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+composio = Composio(
+    api_key="your_api_key",
+    dangerously_allow_auto_upload_download_files=True,
+    file_upload_dirs=[
+        "/tmp/myapp",
+        "/home/user/uploads",
+    ],
+)
+```
+</Tab>
+</Tabs>
+
+The allowlist is checked on a path-component boundary: `/tmp/myapp` allows `/tmp/myapp/report.pdf` but **not** `/tmp/myapp-other/file.pdf`. Providing a non-empty list **replaces** the default `~/.composio/temp` entry — include it explicitly if you still want the default staging directory to work.
+
+| `fileUploadDirs` value | Behavior |
+|---|---|
+| `undefined` (default) | Only `~/.composio/temp` is allowed |
+| `["/tmp/myapp", ...]` | Only listed directories are allowed |
+| `false` or `[]` | All local path uploads are rejected (URLs and in-memory bytes still work) |
+
+<Warning>
+Never set `fileUploadDirs: false` (or an empty list) as your only protection. Combine it with `sensitiveFileUploadProtection: true` and restrict the `fileUploadDirs` allowlist to directories you control.
+</Warning>
+
+## Sensitive file protection
+
+`sensitiveFileUploadProtection` is enabled by default and blocks uploads from paths that contain sensitive segments such as `.ssh`, `.aws`, `.env`, `.gnupg`, and private key file extensions. This prevents a malicious tool from exfiltrating your credentials.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  dangerouslyAllowAutoUploadDownloadFiles: true,
+  // Enabled by default — set false only if you have a specific reason
+  sensitiveFileUploadProtection: true,
+  // Add extra path segments to the built-in denylist
+  fileUploadPathDenySegments: ["my-secrets", "vault"],
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+composio = Composio(
+    api_key="your_api_key",
+    dangerously_allow_auto_upload_download_files=True,
+    # Enabled by default — set False only if you have a specific reason
+    sensitive_file_upload_protection=True,
+    # Add extra path segments to the built-in denylist
+    file_upload_path_deny_segments=["my-secrets", "vault"],
+)
+```
+</Tab>
+</Tabs>
+
+The built-in denylist blocks paths containing: `.ssh`, `.aws`, `.env`, `.gnupg`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, and common private key file extensions (`.pem`, `.key`, `.p12`, `.pfx`).
+
+## Manual file upload
+
+Use `composio.files.upload()` for explicit, programmatic uploads that are independent of tool execution. Manual uploads intentionally skip the `fileUploadDirs` allowlist — they are always under your control:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const fileData = await composio.files.upload({
+  file: "/path/to/report.pdf",
+  toolSlug: "GMAIL_SEND_EMAIL",
+  toolkitSlug: "gmail",
+});
+
+console.log(fileData);
+// { url: "https://...", mimeType: "application/pdf", size: 12345 }
+```
+</Tab>
+<Tab value="Python">
+```python
+# Python: use the session files mount for manual uploads
+file_data = session.experimental.files.upload(
+    file="/path/to/report.pdf",
+    tool_slug="GMAIL_SEND_EMAIL",
+    toolkit_slug="gmail",
+)
+
+print(file_data)
+# { "url": "https://...", "mimeType": "application/pdf", "size": 12345 }
+```
+</Tab>
+</Tabs>
+
+## File download directory
+
+Configure where downloaded files are saved with `fileDownloadDir` (TypeScript) or `file_download_dir` (Python). If not set, files are saved to a system temp directory:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  dangerouslyAllowAutoUploadDownloadFiles: true,
+  fileDownloadDir: "/tmp/composio-downloads",
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+composio = Composio(
+    api_key="your_api_key",
+    dangerously_allow_auto_upload_download_files=True,
+    file_download_dir="/tmp/composio-downloads",
+)
+```
+</Tab>
+</Tabs>
+
+Downloaded files are placed in the configured directory with their original filename. The path is returned in the tool execution response so your application can access it.
+
+## Configuration summary
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `dangerouslyAllowAutoUploadDownloadFiles` | `boolean` | `false` | Opt-in for automatic file handling during tool execution |
+| `fileUploadDirs` | `string[]` \| `false` | `~/.composio/temp` | Allowlist of directories for automatic uploads |
+| `sensitiveFileUploadProtection` | `boolean` | `true` | Block sensitive paths (`.ssh`, `.aws`, `.env`, etc.) |
+| `fileUploadPathDenySegments` | `string[]` | `[]` | Extra path segments to add to the built-in denylist |
+| `fileDownloadDir` | `string` | system temp | Directory where downloaded files are saved |
+
+<CardGroup cols={2}>
+  <Card title="Tools and Toolkits" href="/concepts/tools-and-toolkits">
+    Discover which tools support file upload and download
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    Configure sessions for tool execution with file support
+  </Card>
+  <Card title="Observability" href="/guides/observability">
+    Debug file-related tool execution failures
+  </Card>
+  <Card title="TypeScript SDK Reference" href="/reference/ts/composio">
+    Full ComposioConfig option reference
+  </Card>
+</CardGroup>

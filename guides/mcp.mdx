@@ -1,0 +1,232 @@
+---
+title: "Using Composio as an MCP Server"
+sidebarTitle: "MCP"
+description: "Every Composio session exposes a standard Model Context Protocol (MCP) URL. Connect any MCP-compatible client — Claude Desktop, Cursor, or custom apps — to the session."
+---
+
+Every Composio session creates a live MCP (Model Context Protocol) server. The session's `mcp.url` and `mcp.headers` provide a Streamable HTTP endpoint that any MCP-compatible client can connect to, giving that client access to all of Composio's tool integrations scoped to that user's session. This means you can point Claude Desktop, Cursor, or any custom MCP client at a session and immediately have access to tools like Gmail, GitHub, Slack, and 1000+ more — with authentication handled automatically.
+
+## Getting the MCP URL
+
+After creating a session, the MCP endpoint is available at `session.mcp.url`. Include `session.mcp.headers` in your client configuration so requests are authenticated.
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio } from "@composio/core";
+
+const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+const session = await composio.create("user_123", {
+  toolkits: ["gmail", "github", "slack"],
+});
+
+console.log(session.mcp.url);
+// https://mcp.composio.dev/session/ses_abc123/sse
+
+console.log(session.mcp.headers);
+// { "x-api-key": "your_api_key" }
+```
+</Tab>
+<Tab value="Python">
+```python
+from composio import Composio
+
+composio = Composio(api_key="your_api_key")
+session = composio.create(
+    user_id="user_123",
+    toolkits=["gmail", "github", "slack"],
+)
+
+print(session.mcp.url)
+# https://mcp.composio.dev/session/ses_abc123/sse
+
+print(session.mcp.headers)
+# {"x-api-key": "your_api_key"}
+```
+</Tab>
+</Tabs>
+
+<Note>
+MCP connections to the session use the session's auth context. Tools are scoped to the `user_id` you passed when creating the session, so each user's connected accounts are automatically resolved.
+</Note>
+
+## Connecting Claude Desktop
+
+Add the session MCP URL to your Claude Desktop configuration file. On macOS the file is located at `~/Library/Application Support/Claude/claude_desktop_config.json`.
+
+```json
+{
+  "mcpServers": {
+    "composio": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://mcp.composio.dev/session/ses_abc123/sse",
+        "--header",
+        "x-api-key:your_api_key"
+      ]
+    }
+  }
+}
+```
+
+After saving the file, restart Claude Desktop. The Composio tools for the session will appear in the tool picker.
+
+<Tip>
+You can also use `session.mcp.commands.claude` from the Composio dashboard or the MCP config API to get a pre-filled command you can paste directly into the config file.
+</Tip>
+
+## Connecting Cursor
+
+Cursor supports MCP servers natively. Open **Cursor Settings → MCP** and add a new server with the session URL:
+
+```json
+{
+  "name": "Composio",
+  "url": "https://mcp.composio.dev/session/ses_abc123/sse",
+  "headers": {
+    "x-api-key": "your_api_key"
+  }
+}
+```
+
+Once added, the agent in Cursor's Composer panel can call any Composio tool in the session.
+
+## Custom MCP client
+
+Connect to the session from any MCP-compatible client using the `@modelcontextprotocol/sdk` package:
+
+```typescript
+import { Composio } from "@composio/core";
+import { experimental_createMCPClient as createMCPClient } from "ai";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+
+const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+const session = await composio.create("user_123", {
+  toolkits: ["gmail"],
+});
+
+// Connect the MCP client using the session URL
+const transport = new SSEClientTransport(new URL(session.mcp.url));
+
+const mcpClient = await createMCPClient({
+  name: "composio-session-client",
+  transport,
+});
+
+// Retrieve all tools from the session via MCP
+const tools = await mcpClient.tools();
+
+console.log(tools.map((t) => t.name));
+
+await mcpClient.close();
+```
+
+## Programmatic MCP server with `composio.mcp`
+
+For longer-lived or shared MCP configurations — for example, powering multiple users from a single named server — use `composio.mcp.create()` to create a persistent MCP config, then `composio.mcp.generate()` to get a per-user URL:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+import { Composio } from "@composio/core";
+
+const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+// Create a named MCP server configuration
+const mcpConfig = await composio.mcp.create("my-gmail-server", {
+  toolkits: [
+    {
+      toolkit: "gmail",
+      authConfigId: "ac_your_gmail_auth_config",
+    },
+  ],
+  allowedTools: ["GMAIL_FETCH_EMAILS", "GMAIL_SEND_EMAIL"],
+  manuallyManageConnections: false,
+});
+
+console.log(mcpConfig.id);   // mcp_abc123
+console.log(mcpConfig.MCPUrl); // shared base URL
+
+// Generate a per-user instance URL
+const serverInstance = await composio.mcp.generate("user_123", mcpConfig.id);
+
+console.log(serverInstance.url);
+// https://mcp.composio.dev/custom/mcp_abc123?user=...
+```
+</Tab>
+<Tab value="Python">
+```python
+from composio import Composio
+
+composio = Composio(api_key="your_api_key")
+
+# Create a named MCP server configuration
+mcp_config = composio.mcp.create(
+    name="my-slack-server",
+    toolkits=[{"toolkit": "slack", "auth_config_id": "<auth-config-id>"}],
+)
+
+# Generate a per-user instance URL
+mcp_server = mcp_config.generate(user_id="user_123")
+
+print(mcp_server["url"])
+# https://mcp.composio.dev/custom/mcp_abc123?user=...
+```
+</Tab>
+</Tabs>
+
+## Filtering tools on the MCP endpoint
+
+Restrict which tools appear on an MCP server by passing `allowedTools` when creating the config, or by scoping the session's toolkits. Only the listed tool slugs will be visible to the MCP client:
+
+<Tabs groupId="language" items={["TypeScript", "Python"]}>
+<Tab value="TypeScript">
+```typescript
+const mcpConfig = await composio.mcp.create("scoped-server", {
+  toolkits: ["gmail", "slack"],
+  allowedTools: [
+    "GMAIL_FETCH_EMAILS",
+    "GMAIL_SEND_EMAIL",
+    "SLACK_SEND_MESSAGE",
+  ],
+  manuallyManageConnections: false,
+});
+```
+</Tab>
+<Tab value="Python">
+```python
+mcp_config = composio.mcp.create(
+    name="scoped-server",
+    toolkits=[
+        {"toolkit": "gmail", "auth_config_id": "<auth-config-id>"},
+        {"toolkit": "slack", "auth_config_id": "<auth-config-id>"},
+    ],
+)
+```
+</Tab>
+</Tabs>
+
+You can also use `composio.mcp.update()` to change allowed tools or toolkits on an existing MCP config without recreating it:
+
+```typescript
+await composio.mcp.update("mcp_abc123", {
+  allowedTools: ["GMAIL_FETCH_EMAILS", "GMAIL_SEND_EMAIL"],
+});
+```
+
+<CardGroup cols={2}>
+  <Card title="Authenticating Users" href="/guides/authenticating-users">
+    Connect user accounts before exposing them through MCP
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    How sessions manage user context and tool access
+  </Card>
+  <Card title="Tools and Toolkits" href="/concepts/tools-and-toolkits">
+    Browse the 1000+ tools available through Composio
+  </Card>
+  <Card title="Tool Router" href="/guides/tool-router">
+    Use semantic search to surface only the relevant tools
+  </Card>
+</CardGroup>

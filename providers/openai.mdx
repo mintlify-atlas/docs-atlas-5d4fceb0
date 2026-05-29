@@ -1,0 +1,233 @@
+---
+title: "Composio with OpenAI: Function Calling Integration"
+sidebarTitle: "OpenAI"
+description: "Use Composio tools with OpenAI's Chat Completions and Responses API. Install @composio/openai, pass tools to OpenAI, and execute results through Composio."
+---
+
+Composio's OpenAI provider formats tools as `ChatCompletionTool` objects for OpenAI's function calling API. Pass Composio tools directly to `openai.chat.completions.create()` and execute tool calls back through `composio.provider.handleToolCalls()` — no manual JSON parsing required.
+
+## Installation
+
+<CodeGroup>
+  ```bash npm
+  npm install @composio/core openai
+  ```
+  ```bash yarn
+  yarn add @composio/core openai
+  ```
+  ```bash pnpm
+  pnpm add @composio/core openai
+  ```
+</CodeGroup>
+
+<Note>
+  The `OpenAIProvider` is bundled with `@composio/core` and does not require a separate package. For the Responses API, install `@composio/openai` in addition.
+</Note>
+
+Set your API keys in a `.env` file:
+
+```txt .env
+COMPOSIO_API_KEY=your_composio_api_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+## Chat Completions API
+
+The default `OpenAIProvider` (included in `@composio/core`) wraps tools in `ChatCompletionTool` format for use with `openai.chat.completions.create()`.
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import { OpenAI } from 'openai';
+    import 'dotenv/config';
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    // OpenAIProvider is the default — no need to pass it explicitly
+    const composio = new Composio({
+      apiKey: process.env.COMPOSIO_API_KEY,
+    });
+
+    async function main() {
+      // Tools are returned as ChatCompletionTool[] ready for OpenAI
+      const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER');
+
+      const messages: OpenAI.ChatCompletionMessageParam[] = [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: "Fetch the details of the user 'pg' on HackerNews" },
+      ];
+
+      let response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages,
+        tools,
+        tool_choice: 'auto',
+      });
+
+      // Agentic loop — keep executing tool calls until the model responds with text
+      while (response.choices[0].message.tool_calls?.length) {
+        messages.push(response.choices[0].message);
+
+        // Execute all tool calls through Composio and get formatted results
+        const toolResults = await composio.provider.handleToolCalls('default', response);
+        messages.push(...toolResults);
+
+        response = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages,
+          tools,
+        });
+      }
+
+      console.log(response.choices[0].message.content);
+    }
+
+    main();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import os
+    from openai import OpenAI
+    from composio import Composio
+    from composio_openai import OpenAIProvider
+
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    composio = Composio(provider=OpenAIProvider())
+
+    # Tools are returned in OpenAI's function calling format
+    tools = composio.tools.get(user_id="default", toolkits=["HACKERNEWS"])
+
+    messages = [
+        {"role": "user", "content": "Fetch the details of the user 'pg' on HackerNews"},
+    ]
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        tools=tools,
+        tool_choice="auto",
+    )
+
+    # Agentic loop
+    while response.choices[0].message.tool_calls:
+        messages.append(response.choices[0].message)
+        tool_results = composio.provider.handle_tool_calls(
+            user_id="default", response=response
+        )
+        for tool_call, result in zip(response.choices[0].message.tool_calls, tool_results):
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result),
+            })
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=tools,
+        )
+
+    print(response.choices[0].message.content)
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  `composio.tools.get()` returns `ChatCompletionTool[]` which you pass directly to the `tools` parameter of `openai.chat.completions.create()` — no transformation needed.
+</Tip>
+
+## Responses API
+
+For the newer OpenAI Responses API, install `@composio/openai` and use `OpenAIResponsesProvider` instead. It wraps tools as `FunctionTool` objects compatible with `openai.responses.create()`.
+
+<CodeGroup>
+  ```bash npm
+  npm install @composio/core @composio/openai openai
+  ```
+  ```bash yarn
+  yarn add @composio/core @composio/openai openai
+  ```
+  ```bash pnpm
+  pnpm add @composio/core @composio/openai openai
+  ```
+</CodeGroup>
+
+```typescript
+import OpenAI from 'openai';
+import { Composio } from '@composio/core';
+import { OpenAIResponsesProvider } from '@composio/openai';
+import 'dotenv/config';
+
+const openai = new OpenAI();
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new OpenAIResponsesProvider(),
+});
+
+async function main() {
+  const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER');
+
+  // First turn — let the model decide which tools to call
+  const initialResponse = await openai.responses.create({
+    model: 'gpt-4.1',
+    input: "Tell me about the user 'pg' on HackerNews",
+    tools,
+  });
+
+  // Execute all function_call outputs through Composio
+  const modelInputs = await composio.provider.handleResponse('default', initialResponse);
+
+  // Second turn — submit tool results back to the model
+  const finalResponse = await openai.responses.create({
+    model: 'gpt-4.1',
+    input: [...initialResponse.output, ...modelInputs],
+    tools,
+  });
+
+  const finalContent = finalResponse.output[0];
+  if (finalContent.type === 'message' && finalContent.content[0].type === 'output_text') {
+    console.log(finalContent.content[0].text);
+  }
+}
+
+main();
+```
+
+<Note>
+  The `OpenAIResponsesProvider` exposes `handleResponse(userId, response)` which processes the entire response object, and `handleToolCalls(userId, outputItems)` for more granular control over individual output items.
+</Note>
+
+## Executing individual tool calls
+
+If you need fine-grained control, you can execute tool calls one at a time using `composio.provider.executeToolCall()`:
+
+```typescript
+const toolCall = response.choices[0].message.tool_calls[0];
+
+const result = await composio.provider.executeToolCall(
+  'user_123',       // user ID
+  toolCall,         // OpenAI.ChatCompletionMessageToolCall
+  {
+    connectedAccountId: 'optional_account_id',
+  }
+);
+
+console.log(JSON.parse(result)); // result is a JSON string
+```
+
+## OpenAI Agents SDK
+
+For the OpenAI Agents SDK (the higher-level agent framework), use the separate `@composio/openai-agents` package, which provides an `OpenAIAgentsProvider` designed for that SDK's tool interface.
+
+<CodeGroup>
+  ```bash npm
+  npm install @composio/core @composio/openai-agents openai
+  ```
+  ```bash yarn
+  yarn add @composio/core @composio/openai-agents openai
+  ```
+  ```bash pnpm
+  pnpm add @composio/core @composio/openai-agents openai
+  ```
+</CodeGroup>

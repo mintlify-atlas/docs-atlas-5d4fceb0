@@ -1,0 +1,108 @@
+---
+title: "Composio Provider Adapters for AI Frameworks"
+sidebarTitle: "Overview"
+description: "Composio works with OpenAI, Anthropic, LangChain, Vercel AI SDK, Google, CrewAI, Mastra, and LlamaIndex. Each provider adapter formats tools for your framework."
+---
+
+Composio providers are adapter packages that transform Composio tools into the exact format your AI framework expects — no manual schema conversion needed. Pick your framework from the lists below and follow its dedicated page to get started in minutes.
+
+## AI SDKs
+
+<CardGroup cols={2}>
+  <Card title="OpenAI" icon="robot" href="/providers/openai">
+    Format tools as `ChatCompletionTool` objects for OpenAI's Chat Completions and Responses API. Available for Python and TypeScript.
+  </Card>
+  <Card title="Anthropic" icon="comment-dots" href="/providers/anthropic">
+    Format tools as `ToolParam` objects for Claude's `tool_use` API. Available for Python and TypeScript.
+  </Card>
+  <Card title="Vercel AI SDK" icon="triangle" href="/providers/vercel">
+    Format tools as Vercel `CoreTool` objects for `generateText`, `streamText`, and `generateObject`. TypeScript only.
+  </Card>
+  <Card title="Google" icon="google" href="/providers/google">
+    Format tools as `FunctionDeclaration` objects for Gemini function calling and Google ADK. Available for Python and TypeScript.
+  </Card>
+</CardGroup>
+
+## Agent Frameworks
+
+<CardGroup cols={2}>
+  <Card title="LangChain" icon="link" href="/providers/langchain">
+    Return tools as `DynamicStructuredTool` objects for LCEL chains and LangGraph agents. Available for Python and TypeScript.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/providers/crewai">
+    Wrap tools as `BaseTool` instances for any CrewAI crew or agent. Python only.
+  </Card>
+  <Card title="Mastra" icon="bolt" href="/providers/mastra">
+    Format tools in Mastra's native tool format for Mastra agents. TypeScript only.
+  </Card>
+  <Card title="LlamaIndex" icon="book" href="/providers/overview">
+    Composio tools as LlamaIndex-compatible function tools. Available for Python and TypeScript.
+  </Card>
+</CardGroup>
+
+## How providers work
+
+Every Composio provider follows the same pattern: pass a provider instance to the `Composio` constructor, then call `composio.tools.get()` to retrieve tools already formatted for your framework.
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import { OpenAIProvider } from '@composio/openai'; // swap for any provider
+
+    const composio = new Composio({
+      apiKey: process.env.COMPOSIO_API_KEY,
+      provider: new OpenAIProvider(),
+    });
+
+    // Tools are returned in your framework's native format automatically
+    const tools = await composio.tools.get('user_123', {
+      tools: ['GITHUB_STAR_REPO', 'GMAIL_SEND_EMAIL'],
+    });
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    from composio import Composio
+    from composio_openai import OpenAIProvider  # swap for any provider
+
+    composio = Composio(provider=OpenAIProvider())
+
+    # Tools are returned in your framework's native format automatically
+    tools = composio.tools.get(user_id="user_123", toolkits=["GITHUB", "GMAIL"])
+    ```
+  </Tab>
+</Tabs>
+
+When you call `composio.tools.get()`, the SDK fetches tool definitions from the Composio API, runs them through the provider's `wrapTools()` method, and returns objects your framework can consume directly — no glue code required.
+
+## Build your own provider
+
+If your framework isn't listed above, you can build a custom provider by extending one of two base classes from `@composio/core`:
+
+- **`BaseNonAgenticProvider`** — for frameworks where Composio handles tool execution (OpenAI, Anthropic, Google). Override `wrapTool()` and `wrapTools()` to transform tool definitions into your format, and implement `executeToolCall()` to process results.
+- **`BaseAgenticProvider`** — for frameworks that handle tool execution themselves (LangChain, Vercel, Mastra, CrewAI). Override `wrapTool()` and `wrapTools()`, and embed the `executeTool` callback inside each wrapped tool so the framework calls it automatically.
+
+```typescript
+import { BaseNonAgenticProvider, Tool } from '@composio/core';
+
+class MyProvider extends BaseNonAgenticProvider<MyToolCollection, MyTool, MyMcpResponse> {
+  readonly name = 'my-provider';
+
+  wrapTool(tool: Tool): MyTool {
+    return {
+      name: tool.slug,
+      description: tool.description,
+      parameters: tool.inputParameters,
+    };
+  }
+
+  wrapTools(tools: Tool[]): MyToolCollection {
+    return tools.map(tool => this.wrapTool(tool));
+  }
+}
+```
+
+<Tip>
+  Both base classes are exported from `@composio/core`, so you don't need any additional dependencies to write a custom provider.
+</Tip>

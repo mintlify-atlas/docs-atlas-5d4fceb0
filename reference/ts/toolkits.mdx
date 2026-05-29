@@ -1,0 +1,208 @@
+---
+title: "Toolkits API — Composio TypeScript SDK Reference"
+sidebarTitle: "Toolkits"
+description: "composio.toolkits provides list() and get() to discover Composio's 1000+ toolkit integrations and inspect available tools, auth schemes, and metadata."
+---
+
+The `Toolkits` class lets you discover and inspect Composio's catalog of integrations. Each toolkit groups a set of related tools (e.g., all GitHub operations) under a common slug and authentication scheme. Use `composio.toolkits.get()` to browse the catalog or retrieve a specific integration's metadata before configuring authentication.
+
+## toolkits.get() — retrieve a single toolkit
+
+```typescript
+composio.toolkits.get(slug: string): Promise<ToolkitRetrieveResponse>
+```
+
+<ParamField body="slug" type="string" required>
+  Toolkit slug identifier (e.g. `'github'`, `'slack'`, `'gmail'`).
+</ParamField>
+
+### ToolkitRetrieveResponse
+
+<ResponseField name="slug" type="string">
+  Unique toolkit identifier used throughout the SDK.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Human-readable toolkit name (e.g. `'GitHub'`).
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Short description of what the toolkit does.
+</ResponseField>
+
+<ResponseField name="logo" type="string">
+  URL of the toolkit's logo image.
+</ResponseField>
+
+<ResponseField name="authConfigDetails" type="array">
+  List of available authentication schemes for this toolkit. Each item describes a supported auth mode (`OAUTH2`, `API_KEY`, etc.) and the fields required to create an auth config.
+</ResponseField>
+
+<ResponseField name="categories" type="string[]">
+  Category tags for the toolkit (e.g. `['developer-tools', 'version-control']`).
+</ResponseField>
+
+## toolkits.get() — list toolkits
+
+```typescript
+composio.toolkits.get(query?: ToolkitListParams): Promise<ToolKitListResponse>
+```
+
+<ParamField body="query" type="ToolkitListParams" optional>
+  Filter and pagination options.
+
+  <Expandable title="ToolkitListParams fields">
+    <ParamField body="category" type="string">
+      Filter by category slug.
+    </ParamField>
+    <ParamField body="managedBy" type="string">
+      Filter by management source.
+    </ParamField>
+    <ParamField body="sortBy" type="string">
+      Sort field.
+    </ParamField>
+    <ParamField body="cursor" type="string">
+      Pagination cursor from a previous response's `nextCursor`.
+    </ParamField>
+    <ParamField body="limit" type="number">
+      Maximum number of toolkits to return per page.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### ToolKitListResponse
+
+<ResponseField name="items" type="ToolkitRetrieveResponse[]">
+  Array of toolkit objects for the current page.
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string | null">
+  Cursor to pass as `cursor` in the next request for subsequent pages. `null` when there are no more pages.
+</ResponseField>
+
+<ResponseField name="totalPages" type="number">
+  Total number of pages available.
+</ResponseField>
+
+## toolkits.authorize()
+
+A convenience method that creates an auth config (if none exists) and initiates a connection request in a single call. Ideal for quickly onboarding a user to a toolkit without managing auth configs manually.
+
+```typescript
+composio.toolkits.authorize(
+  userId: string,
+  toolkitSlug: string,
+  authConfigId?: string
+): Promise<ConnectionRequest>
+```
+
+<ParamField body="userId" type="string" required>
+  External user identifier.
+</ParamField>
+
+<ParamField body="toolkitSlug" type="string" required>
+  Toolkit to authorize (e.g. `'github'`).
+</ParamField>
+
+<ParamField body="authConfigId" type="string" optional>
+  Use a specific auth config instead of auto-selecting the first available one.
+</ParamField>
+
+Returns a `ConnectionRequest`. Call `connectionRequest.waitForConnection()` to poll until the user completes the OAuth flow.
+
+## toolkits.listCategories()
+
+Retrieve all available toolkit category tags.
+
+```typescript
+composio.toolkits.listCategories(): Promise<ToolkitRetrieveCategoriesResponse>
+```
+
+## toolkits.getAuthConfigCreationFields()
+
+Retrieve the fields needed to create an auth config for a given toolkit and auth scheme.
+
+```typescript
+composio.toolkits.getAuthConfigCreationFields(
+  toolkitSlug: string,
+  authScheme: AuthSchemeType,
+  options?: { requiredOnly?: boolean }
+): Promise<ToolkitAuthFieldsResponse>
+```
+
+## toolkits.getConnectedAccountInitiationFields()
+
+Retrieve the fields needed to initiate a connected account for a given toolkit and auth scheme.
+
+```typescript
+composio.toolkits.getConnectedAccountInitiationFields(
+  toolkitSlug: string,
+  authScheme: AuthSchemeType,
+  options?: { requiredOnly?: boolean }
+): Promise<ToolkitAuthFieldsResponse>
+```
+
+## Examples
+
+<Tabs>
+  <Tab title="List all toolkits">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // List all toolkits (paginated)
+    const page1 = await composio.toolkits.get({ limit: 20 });
+    console.log(`Found ${page1.items.length} toolkits (page 1 of ${page1.totalPages})`);
+
+    // Fetch next page
+    if (page1.nextCursor) {
+      const page2 = await composio.toolkits.get({
+        limit: 20,
+        cursor: page1.nextCursor,
+      });
+    }
+    ```
+  </Tab>
+  <Tab title="Inspect a specific toolkit">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    const github = await composio.toolkits.get('github');
+    console.log('Toolkit:', github.name);
+    console.log('Auth schemes:', github.authConfigDetails?.map(d => d.mode));
+    ```
+  </Tab>
+  <Tab title="Quick user authorization">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // Authorize a user to GitHub in one call
+    const connectionRequest = await composio.toolkits.authorize('user_123', 'github');
+
+    console.log('Redirect the user to:', connectionRequest.redirectUrl);
+
+    // Wait for the user to complete the OAuth flow
+    const account = await connectionRequest.waitForConnection(120_000);
+    console.log('Connected account ID:', account.id);
+    ```
+  </Tab>
+  <Tab title="Filter by category">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    const categories = await composio.toolkits.listCategories();
+    console.log('Available categories:', categories.items.map(c => c.slug));
+
+    // Fetch toolkits in a specific category
+    const devTools = await composio.toolkits.get({ category: 'developer-tools' });
+    console.log('Developer tool toolkits:', devTools.items.map(t => t.slug));
+    ```
+  </Tab>
+</Tabs>

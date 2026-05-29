@@ -1,0 +1,530 @@
+---
+title: "Composio CLI Command Reference"
+sidebarTitle: "Commands"
+description: "Complete reference for all Composio CLI commands: login, whoami, search, execute, link, proxy, run, and more. Includes flags, options, and usage examples."
+---
+
+The Composio CLI exposes a set of commands for interacting with Composio from your terminal. Each command is designed to work standalone or as a tool surface for Claude Code agents. All commands require authentication (via `composio login`) unless noted otherwise, and support `--help` / `--help full` for additional detail.
+
+## Command reference
+
+| Command | Description |
+|---------|-------------|
+| `composio login` | Authenticate with Composio via browser OAuth |
+| `composio logout` | Remove stored credentials |
+| `composio whoami` | Show the current authenticated user and organization |
+| `composio version` | Print the installed CLI version |
+| `composio upgrade` | Upgrade to the latest (or a specific) CLI release |
+| `composio search <query>` | Find tools by natural language use case |
+| `composio execute <TOOL_SLUG>` | Execute a tool by slug with JSON input |
+| `composio link <toolkit>` | Connect an external app account via OAuth |
+| `composio proxy <url>` | Call a provider API endpoint with Composio-managed auth |
+| `composio run '<script>'` | Run inline TypeScript/JS with injected Composio globals |
+| `composio --install-skill <skill> <client>` | Install a skill for an AI client such as Claude Code |
+
+---
+
+## Commands
+
+<AccordionGroup>
+
+<Accordion title="composio login">
+
+Authenticate with Composio. By default, opens your browser for an OAuth flow and waits for confirmation. Credentials are stored locally and reused by all subsequent commands.
+
+`composio login` also installs the `composio-cli` skill for Claude Code automatically after a successful login, unless you pass `--no-skill-install`.
+
+**Usage**
+
+```bash
+composio login [options]
+```
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `--no-browser` | Print the login URL instead of opening the browser automatically |
+| `--no-wait` | Print the login URL and session info as JSON, then exit without waiting |
+| `--poll` | Complete a pending browser login that was started with `--no-wait` |
+| `--key <key>` | Complete login using a specific session key from a prior `--no-wait` run |
+| `--user-api-key <key>` | Log in directly with a Composio user API key (skips browser) |
+| `--org <id\|name>` | Override the current organization (requires `--user-api-key`) |
+| `-y`, `--yes` | Skip the org picker and use the session default org |
+| `--no-skill-install` | Skip installing the `composio-cli` skill for Claude Code |
+| `--agent` | Sign up or log in using a Composio agent identity |
+
+**Examples**
+
+```bash
+# Standard interactive browser login
+composio login
+
+# Print URL and exit; complete later with --poll
+composio login --no-wait
+composio login --poll
+
+# Log in directly with an API key
+composio login --user-api-key uak_xxxxxxxxxxxxxx
+
+# Log in and select a specific org
+composio login --user-api-key uak_xxxxxxxxxxxxxx --org "My Org"
+
+# Skip the browser, open URL manually
+composio login --no-browser
+```
+
+</Accordion>
+
+<Accordion title="composio logout">
+
+Remove your locally stored Composio credentials. If you are logged in as an agent identity, you will be prompted to confirm before the agent key is deleted, because the key cannot be recovered without the original `composio_agent_key`.
+
+**Usage**
+
+```bash
+composio logout [options]
+```
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `-f`, `--force` | Skip confirmation prompts |
+
+**Example**
+
+```bash
+composio logout
+```
+
+</Accordion>
+
+<Accordion title="composio whoami">
+
+Display your current authenticated user, organization, and account type. Never prints or exposes API keys. Prints a JSON summary to stdout for scripting.
+
+**Usage**
+
+```bash
+composio whoami
+```
+
+**Output fields**
+
+| Field | Description |
+|-------|-------------|
+| `account_type` | `"human"` or `"agent"` |
+| `email` | Email address associated with the account |
+| `current_org_name` | The currently selected organization |
+| `enhanced_controls_enabled` | Whether enhanced permission controls are active |
+
+**Example**
+
+```bash
+composio whoami
+# Type: human
+# Email: you@example.com
+# Current Org: My Org
+# Enhanced Controls: off
+```
+
+</Accordion>
+
+<Accordion title="composio version">
+
+Print the installed Composio CLI version to stdout.
+
+**Usage**
+
+```bash
+composio version
+# or
+composio --version
+```
+
+**Example**
+
+```bash
+composio version
+# 0.2.30
+```
+
+</Accordion>
+
+<Accordion title="composio upgrade">
+
+Upgrade the Composio CLI to the latest available release, or install a specific version. After upgrading, the CLI automatically re-installs the Claude Code skill for the new version.
+
+**Usage**
+
+```bash
+composio upgrade [version] [options]
+```
+
+**Arguments**
+
+| Argument | Description |
+|----------|-------------|
+| `version` | Optional. A specific release to install, e.g. `0.13.1`, `0.13.1-beta.42`, or the full tag `@composio/cli@0.13.1`. Omit to install the latest stable release. |
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `-b`, `--beta` | Upgrade to the latest beta release instead of the stable channel |
+
+**Examples**
+
+```bash
+# Upgrade to the latest stable release
+composio upgrade
+
+# Install a specific version
+composio upgrade 0.13.1
+
+# Install a specific beta
+composio upgrade 0.13.1-beta.42
+
+# Upgrade to the latest beta
+composio upgrade --beta
+```
+
+</Accordion>
+
+<Accordion title="composio search <query>">
+
+Semantically search for Composio tools using natural language. Describe what you want to do and the CLI returns matching tool slugs, their schemas, connection status for your linked accounts, and suggested next steps.
+
+By default, the output is full JSON (optimized for Claude Code to consume). Pass `--human` for a formatted table view.
+
+**Usage**
+
+```bash
+composio search <query> [query ...] [options]
+```
+
+**Arguments**
+
+| Argument | Description |
+|----------|-------------|
+| `query` | One or more natural language use-case descriptions. Multiple queries are searched in parallel. |
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `--toolkits <slugs>` | Filter results to specific toolkit slugs, comma-separated (e.g. `gmail,outlook`) |
+| `--limit <n>` | Number of results per query (1–1000, default `10`) |
+| `--human` | Show a formatted human-readable table instead of JSON |
+| `--json` | Force full JSON output (default when `--human` is not set) |
+
+**Examples**
+
+```bash
+# Search by use case
+composio search "summarize my unread gmail"
+
+# Search multiple queries at once
+composio search "send an email" "create a github issue"
+
+# Filter to a specific toolkit
+composio search "create issue" --toolkits github
+
+# Human-readable output
+composio search "list calendar events" --human
+
+# Limit results
+composio search "find emails" --limit 5
+```
+
+</Accordion>
+
+<Accordion title="composio execute <TOOL_SLUG>">
+
+Execute a Composio tool by its slug. Input arguments are provided as a JSON (or JS-style object literal) string. The CLI validates inputs against cached tool schemas and checks that the required app account is connected before calling the tool.
+
+**Usage**
+
+```bash
+composio execute <TOOL_SLUG> [options]
+```
+
+**Arguments**
+
+| Argument | Description |
+|----------|-------------|
+| `TOOL_SLUG` | The tool identifier (e.g. `GMAIL_FETCH_EMAILS`, `GITHUB_CREATE_ISSUE`) |
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `-d`, `--data <json>` | JSON arguments for the tool, a `@file` path, or `-` to read from stdin |
+| `--get-schema` | Fetch and print the tool's input schema without executing |
+| `--dry-run` | Validate inputs and preview the call without executing |
+| `--file <path>` | Inject a local file path into the single `file_uploadable` input field |
+| `--account <selector>` | Select a specific connected account by alias, word_id, or account ID |
+| `-p`, `--parallel` | Execute multiple `TOOL_SLUG -d <json>` groups concurrently |
+| `--skip-connection-check` | Skip the connected-account fail-fast check |
+| `--skip-tool-params-check` | Skip input validation against cached schema |
+| `--skip-checks` | Skip both the connection check and input validation |
+
+**Examples**
+
+```bash
+# Inspect the required input schema before executing
+composio execute GMAIL_FETCH_EMAILS --get-schema
+
+# Execute a tool with JSON input
+composio execute GMAIL_FETCH_EMAILS \
+  -d '{ query: "is:unread newer_than:1d", max_results: 10 }'
+
+# Send an email
+composio execute GMAIL_SEND_EMAIL \
+  -d '{ recipient_email: "you@example.com", subject: "Hello", body: "From Composio CLI" }'
+
+# Dry-run to validate inputs without executing
+composio execute GMAIL_SEND_EMAIL \
+  --dry-run -d '{ recipient_email: "a@b.com", body: "Hello" }'
+
+# Upload a file to Slack
+composio execute SLACK_UPLOAD_OR_CREATE_A_FILE_IN_SLACK \
+  --file ./image.png -d '{ channels: "C0123456" }'
+
+# Execute two tools in parallel
+composio execute --parallel \
+  GMAIL_FETCH_EMAILS -d '{ max_results: 5 }' \
+  GITHUB_LIST_REPOSITORY_ISSUES -d '{ owner: "composiohq", repo: "composio", state: "open" }'
+```
+
+<Tip>
+  Use `composio search "your use case"` first to find the right tool slug. Then use `--get-schema` to see exactly what inputs the tool expects before running it.
+</Tip>
+
+</Accordion>
+
+<Accordion title="composio link <toolkit>">
+
+Connect an external app account (Gmail, GitHub, Slack, and 250+ others) so Composio tools can act on your behalf. Opens a browser for OAuth authorization and waits until the connection is confirmed active.
+
+**Usage**
+
+```bash
+composio link <toolkit> [options]
+```
+
+**Arguments**
+
+| Argument | Description |
+|----------|-------------|
+| `toolkit` | The toolkit slug to connect (e.g. `gmail`, `github`, `slack`) |
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `--no-wait` | Print the authorization URL and exit without waiting for confirmation |
+| `--list` | List existing active connected accounts for the toolkit instead of creating a new one |
+
+**Examples**
+
+```bash
+# Connect Gmail (opens browser, waits for confirmation)
+composio link gmail
+
+# Connect GitHub
+composio link github
+
+# Print the auth URL and exit without waiting
+composio link gmail --no-wait
+
+# List existing connected accounts for a toolkit
+composio link gmail --list
+```
+
+</Accordion>
+
+<Accordion title="composio proxy <url>">
+
+Call a provider's REST API endpoint using Composio-managed authentication for a connected account. Composio injects the auth headers automatically — you provide the URL, method, and body in a curl-like style.
+
+**Usage**
+
+```bash
+composio proxy <url> --toolkit <name> [options]
+```
+
+**Arguments**
+
+| Argument | Description |
+|----------|-------------|
+| `url` | The full absolute API endpoint URL |
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `--toolkit`, `-t <slug>` | **Required.** The toolkit whose connected account should supply auth |
+| `-X`, `--method <method>` | HTTP method: `GET`, `POST`, `PUT`, `DELETE`, `PATCH` (default: `GET`) |
+| `-H`, `--header <header>` | Header in `"Name: value"` format. Repeat for multiple headers. |
+| `-d`, `--data <body>` | Request body as raw text, JSON, a `@file` path, or `-` for stdin |
+| `--skip-connection-check` | Skip the fail-fast connection check (useful if you just linked an account) |
+
+**Examples**
+
+```bash
+# Fetch your Gmail profile
+composio proxy https://gmail.googleapis.com/gmail/v1/users/me/profile \
+  --toolkit gmail
+
+# Create a GitHub issue via the GitHub API
+composio proxy https://api.github.com/repos/composiohq/composio/issues \
+  --toolkit github \
+  -X POST \
+  -H 'content-type: application/json' \
+  -d '{ "title": "Bug report", "body": "Something broke" }'
+
+# List Slack channels
+composio proxy https://slack.com/api/conversations.list \
+  --toolkit slack
+```
+
+</Accordion>
+
+<Accordion title="composio run '<script>'">
+
+Run an inline TypeScript/JavaScript script (or a file with `--file`) with Composio helpers injected as globals. Use this for multi-step workflows, parallel fan-out, data transformation, or LLM-assisted summarization inside Claude Code.
+
+**Usage**
+
+```bash
+composio run '<inline code>' [options]
+composio run --file <path> [options] [-- <args>]
+```
+
+**Injected globals**
+
+| Global | Description |
+|--------|-------------|
+| `execute(slug, data?)` | Execute a Composio tool. Same behavior as `composio execute`. Returns parsed JSON. |
+| `search(query, options?)` | Search for tools. Same behavior as `composio search`. |
+| `proxy(toolkit)` | Returns a `fetch`-like function authenticated with your connected account for that toolkit. |
+| `experimental_subAgent(prompt, options?)` | Spawn a sub-agent from the same agent family (Claude → Claude, Codex → Codex) with optional Zod structured output. |
+| `result.prompt()` | Prompt-safe serialization of a helper result, suitable for passing to `experimental_subAgent`. |
+| `z` | The `zod` library, for building structured output schemas. |
+
+**Flags**
+
+| Flag | Description |
+|------|-------------|
+| `-f`, `--file <path>` | Run a TypeScript/JS file instead of inline code |
+| `--debug` | Log helper steps while the script runs |
+| `--dry-run` | Preview `execute()` calls without running them |
+| `--logs-off` | Hide streaming logs from `experimental_subAgent`; keep them only in the run log file |
+| `--skip-connection-check` | Skip the connected-account check |
+| `--skip-tool-params-check` | Skip input validation against cached schema |
+| `--skip-checks` | Skip both the connection check and input validation |
+
+**Examples**
+
+```bash
+# Fetch the last 10 unread emails
+composio run '
+const messages = await execute("GMAIL_FETCH_EMAILS", {
+  query: "is:unread newer_than:1d",
+  max_results: 10,
+});
+console.log(messages);
+'
+
+# Fan out across multiple tools in parallel
+composio run '
+const [emails, issues, events] = await Promise.all([
+  execute("GMAIL_FETCH_EMAILS", { max_results: 5 }),
+  execute("GITHUB_LIST_REPOSITORY_ISSUES", { owner: "composiohq", repo: "composio", state: "open" }),
+  execute("GOOGLECALENDAR_FIND_EVENT", { calendar_id: "primary" }),
+]);
+console.log({ emails: emails.data, issues: issues.data, events: events.data });
+'
+
+# Use a sub-agent to produce a morning brief with structured output
+composio run --logs-off '
+const [emails, issues] = await Promise.all([
+  execute("GMAIL_FETCH_EMAILS", { max_results: 5 }),
+  execute("GITHUB_LIST_REPOSITORY_ISSUES", { owner: "composiohq", repo: "composio", state: "open" }),
+]);
+
+const brief = await experimental_subAgent(
+  `Create a morning brief from these emails and issues.\n\n${emails.prompt()}\n\n${issues.prompt()}`,
+  {
+    schema: z.object({
+      brief: z.string(),
+      urgentEmails: z.array(z.string()),
+      urgentIssues: z.array(z.string()),
+    }),
+  }
+);
+
+console.log(brief.structuredOutput);
+'
+
+# Call a provider API endpoint with proxy()
+composio run '
+const gmail = await proxy("gmail");
+const profile = await gmail("https://gmail.googleapis.com/gmail/v1/users/me/profile");
+console.log(profile);
+'
+
+# Run a checked-in script file and pass arguments
+composio run --file ./workflow.ts -- --repo composiohq/composio
+```
+
+</Accordion>
+
+<Accordion title="composio --install-skill <skill> <client>">
+
+Install a skill for an AI client. Skills are instruction sets that teach the AI client how to use a specific Composio capability from the command line. `composio login` installs the `composio-cli` skill for Claude Code automatically. Use this command to (re-)install it manually or to target a different client.
+
+**Usage**
+
+```bash
+composio --install-skill <skill> <client>
+```
+
+**Arguments**
+
+| Argument | Description |
+|----------|-------------|
+| `skill` | The skill name to install (e.g. `composio-cli`) |
+| `client` | The AI client to install the skill for (e.g. `claude`) |
+
+**Example**
+
+```bash
+# Install the composio-cli skill for Claude Code
+composio --install-skill composio-cli claude
+```
+
+This command is also run automatically by `composio login` and `composio upgrade`.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Getting help
+
+Use `--help` on any command or subcommand to see full usage details. The `--help full` variant shows all flags including advanced and developer-facing options:
+
+```bash
+composio --help
+composio execute --help full
+composio run --help full
+composio dev --help full
+```
+
+For the developer workflow commands (auth configs, connected account management, trigger inspection, playground execution, and more), see the `composio dev` namespace:
+
+```bash
+composio dev --help full
+```

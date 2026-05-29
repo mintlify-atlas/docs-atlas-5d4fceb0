@@ -1,0 +1,386 @@
+---
+title: "Triggers API — Composio TypeScript SDK Reference"
+sidebarTitle: "Triggers"
+description: "composio.triggers subscribes to real-time webhook events from connected apps. React to new emails, GitHub events, Slack messages, and other app activity."
+---
+
+The `Triggers` class enables real-time event-driven automation. When a trigger fires — a new email arrives, a GitHub PR is opened, a Slack message is posted — Composio delivers the event to your callback via Pusher WebSocket or HTTPS webhook. Triggers are attached to connected accounts, so each user's events are isolated.
+
+## triggers.subscribe()
+
+Subscribe to all incoming trigger events with optional filters. Maintains a persistent WebSocket connection using Pusher.
+
+```typescript
+composio.triggers.subscribe(
+  fn: (data: IncomingTriggerPayload) => void,
+  filters?: TriggerSubscribeParams
+): Promise<void>
+```
+
+<ParamField body="fn" type="function" required>
+  Callback invoked for each matching trigger event. Receives an `IncomingTriggerPayload`.
+</ParamField>
+
+<ParamField body="filters" type="TriggerSubscribeParams" optional>
+  Filter which trigger events are forwarded to your callback. All filters are ANDed together.
+
+  <Expandable title="TriggerSubscribeParams fields">
+    <ParamField body="toolkits" type="string[]">
+      Only receive events from specified toolkit slugs (e.g. `['github', 'gmail']`).
+    </ParamField>
+    <ParamField body="triggerSlug" type="string[]">
+      Only receive events matching specific trigger slugs (e.g. `['GMAIL_NEW_EMAIL']`).
+    </ParamField>
+    <ParamField body="connectedAccountId" type="string">
+      Only receive events from a specific connected account.
+    </ParamField>
+    <ParamField body="triggerId" type="string">
+      Only receive events from a specific trigger instance.
+    </ParamField>
+    <ParamField body="userId" type="string">
+      Only receive events for a specific user.
+    </ParamField>
+    <ParamField body="triggerData" type="string">
+      Match on the trigger's metadata data field.
+    </ParamField>
+    <ParamField body="authConfigId" type="string">
+      Only receive events from connections under a specific auth config.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### IncomingTriggerPayload
+
+<ResponseField name="id" type="string">
+  Trigger instance ID.
+</ResponseField>
+
+<ResponseField name="uuid" type="string">
+  Trigger UUID.
+</ResponseField>
+
+<ResponseField name="triggerSlug" type="string">
+  The trigger type slug (e.g. `'GMAIL_NEW_EMAIL'`).
+</ResponseField>
+
+<ResponseField name="toolkitSlug" type="string">
+  The toolkit that fired the event (e.g. `'GMAIL'`).
+</ResponseField>
+
+<ResponseField name="userId" type="string">
+  The user ID associated with the connected account that fired this event.
+</ResponseField>
+
+<ResponseField name="payload" type="Record<string, unknown>">
+  The trigger's event-specific data (e.g. email subject, body, sender for a new email event).
+</ResponseField>
+
+<ResponseField name="originalPayload" type="Record<string, unknown>">
+  The raw unmodified payload from the upstream service.
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Event metadata including `triggerSlug`, `toolkitSlug`, `triggerConfig`, and `connectedAccount` details.
+
+  <Expandable title="metadata.connectedAccount fields">
+    <ResponseField name="id" type="string">
+      Connected account ID.
+    </ResponseField>
+    <ResponseField name="uuid" type="string">
+      Connected account UUID.
+    </ResponseField>
+    <ResponseField name="authConfigId" type="string">
+      Auth config ID used for this connection.
+    </ResponseField>
+    <ResponseField name="userId" type="string">
+      User ID who owns the connection.
+    </ResponseField>
+    <ResponseField name="status" type='"ACTIVE" | "INACTIVE"'>
+      Connection status at time of event.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## triggers.unsubscribe()
+
+Disconnect from the real-time event stream. Call this during cleanup to release the WebSocket connection.
+
+```typescript
+composio.triggers.unsubscribe(): Promise<void>
+```
+
+## triggers.create()
+
+Create (or upsert) a trigger instance for a user. If no connected account ID is provided, the first active connected account for the user and toolkit is used.
+
+```typescript
+composio.triggers.create(
+  userId: string,
+  slug: string,
+  body?: TriggerInstanceUpsertParams
+): Promise<TriggerInstanceUpsertResponse>
+```
+
+<ParamField body="userId" type="string" required>
+  External user ID.
+</ParamField>
+
+<ParamField body="slug" type="string" required>
+  Trigger type slug (e.g. `'GMAIL_NEW_EMAIL'`).
+</ParamField>
+
+<ParamField body="body.connectedAccountId" type="string" optional>
+  Specific connected account to attach this trigger to.
+</ParamField>
+
+<ParamField body="body.triggerConfig" type="Record<string, unknown>" optional>
+  Trigger-specific configuration (e.g. label filter for Gmail, event type for GitHub).
+</ParamField>
+
+### TriggerInstanceUpsertResponse
+
+<ResponseField name="triggerId" type="string">
+  ID of the created or updated trigger instance.
+</ResponseField>
+
+## triggers.listActive()
+
+List all active trigger instances with optional filtering.
+
+```typescript
+composio.triggers.listActive(
+  query?: TriggerInstanceListActiveParams
+): Promise<TriggerInstanceListActiveResponse>
+```
+
+<ParamField body="query.connectedAccountIds" type="string[]" optional>
+  Filter by connected account IDs.
+</ParamField>
+
+<ParamField body="query.authConfigIds" type="string[]" optional>
+  Filter by auth config IDs.
+</ParamField>
+
+<ParamField body="query.triggerIds" type="string[]" optional>
+  Filter by trigger instance IDs.
+</ParamField>
+
+<ParamField body="query.triggerNames" type="string[]" optional>
+  Filter by trigger type slugs.
+</ParamField>
+
+<ParamField body="query.showDisabled" type="boolean" optional>
+  Include disabled trigger instances. Defaults to `false`.
+</ParamField>
+
+<ParamField body="query.cursor" type="string" optional>
+  Pagination cursor.
+</ParamField>
+
+<ParamField body="query.limit" type="number" optional>
+  Maximum items per page.
+</ParamField>
+
+## triggers.listTypes()
+
+List available trigger types, optionally filtered by toolkit.
+
+```typescript
+composio.triggers.listTypes(
+  query?: TriggersTypeListParams
+): Promise<TriggersTypeListResponse>
+```
+
+<ParamField body="query.toolkits" type="string[]" optional>
+  Filter to specific toolkit slugs.
+</ParamField>
+
+<ParamField body="query.cursor" type="string" optional>
+  Pagination cursor.
+</ParamField>
+
+<ParamField body="query.limit" type="number" optional>
+  Maximum items per page.
+</ParamField>
+
+## triggers.getType()
+
+Retrieve a specific trigger type by its slug.
+
+```typescript
+composio.triggers.getType(slug: string): Promise<TriggersTypeRetrieveResponse>
+```
+
+## triggers.delete()
+
+Delete a trigger instance.
+
+```typescript
+composio.triggers.delete(triggerId: string): Promise<TriggerInstanceManageDeleteResponse>
+```
+
+## triggers.enable() / disable()
+
+Enable or disable a trigger instance without deleting it.
+
+```typescript
+composio.triggers.enable(triggerId: string): Promise<TriggerInstanceManageUpdateResponse>
+composio.triggers.disable(triggerId: string): Promise<TriggerInstanceManageUpdateResponse>
+```
+
+## triggers.verifyWebhook()
+
+Verify and parse an incoming webhook payload. Validates the HMAC-SHA256 signature and checks the timestamp is within tolerance.
+
+```typescript
+composio.triggers.verifyWebhook(params: VerifyWebhookParams): Promise<VerifyWebhookResult>
+```
+
+<ParamField body="params.payload" type="string" required>
+  Raw request body as a string. Do not JSON-parse before passing.
+</ParamField>
+
+<ParamField body="params.signature" type="string" required>
+  Value of the `webhook-signature` HTTP header.
+</ParamField>
+
+<ParamField body="params.secret" type="string" required>
+  Webhook secret from the Composio dashboard.
+</ParamField>
+
+<ParamField body="params.id" type="string" required>
+  Value of the `webhook-id` HTTP header.
+</ParamField>
+
+<ParamField body="params.timestamp" type="string" required>
+  Value of the `webhook-timestamp` HTTP header (Unix seconds).
+</ParamField>
+
+<ParamField body="params.tolerance" type="number" optional>
+  Maximum allowed webhook age in seconds. Defaults to `300` (5 minutes). Pass `0` to disable timestamp validation.
+</ParamField>
+
+### VerifyWebhookResult
+
+<ResponseField name="version" type='"V1" | "V2" | "V3"'>
+  Detected webhook payload format version.
+</ResponseField>
+
+<ResponseField name="payload" type="IncomingTriggerPayload">
+  Normalized trigger payload.
+</ResponseField>
+
+<ResponseField name="rawPayload" type="WebhookPayload">
+  Raw parsed payload before normalization.
+</ResponseField>
+
+## Examples
+
+<Tabs>
+  <Tab title="Subscribe to Gmail new email">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // First, create a trigger instance for the user
+    const { triggerId } = await composio.triggers.create(
+      'user_123',
+      'GMAIL_NEW_EMAIL',
+      {
+        triggerConfig: {
+          userId: 'me',
+          interval: 60, // poll every 60 seconds
+          labelIds: ['INBOX'],
+        },
+      }
+    );
+
+    console.log('Trigger created:', triggerId);
+
+    // Subscribe to real-time events
+    await composio.triggers.subscribe(
+      (event) => {
+        console.log('New email from:', event.payload.from);
+        console.log('Subject:', event.payload.subject);
+        console.log('User:', event.userId);
+      },
+      {
+        triggerSlug: ['GMAIL_NEW_EMAIL'],
+        userId: 'user_123',
+      }
+    );
+
+    // Later, clean up
+    // await composio.triggers.unsubscribe();
+    ```
+  </Tab>
+  <Tab title="Subscribe to GitHub events">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    // Create a trigger instance
+    await composio.triggers.create('user_123', 'GITHUB_PULL_REQUEST_EVENT');
+
+    // Subscribe to all GitHub events for any user
+    await composio.triggers.subscribe(
+      (event) => {
+        if (event.triggerSlug === 'GITHUB_PULL_REQUEST_EVENT') {
+          const pr = event.payload;
+          console.log(`PR #${pr.number}: ${pr.title} — ${pr.action}`);
+        }
+      },
+      { toolkits: ['github'] }
+    );
+    ```
+  </Tab>
+  <Tab title="Verify a webhook">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import express from 'express';
+
+    const app = express();
+    const composio = new Composio();
+
+    app.post('/webhooks/composio', express.raw({ type: '*/*' }), async (req, res) => {
+      try {
+        const result = await composio.triggers.verifyWebhook({
+          payload: req.body.toString(),
+          signature: req.headers['webhook-signature'] as string,
+          id: req.headers['webhook-id'] as string,
+          timestamp: req.headers['webhook-timestamp'] as string,
+          secret: process.env.COMPOSIO_WEBHOOK_SECRET!,
+        });
+
+        console.log('Verified trigger:', result.payload.triggerSlug);
+        console.log('Webhook version:', result.version);
+
+        res.status(200).json({ ok: true });
+      } catch (error) {
+        console.error('Webhook verification failed:', error);
+        res.status(401).json({ error: 'Unauthorized' });
+      }
+    });
+    ```
+  </Tab>
+  <Tab title="List active triggers">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio();
+
+    const { items } = await composio.triggers.listActive({
+      showDisabled: false,
+      limit: 50,
+    });
+
+    items.forEach(trigger => {
+      console.log(`${trigger.triggerName}: ${trigger.id}`);
+      console.log(`  Connected account: ${trigger.connectedAccountId}`);
+      console.log(`  Updated: ${trigger.updatedAt}`);
+    });
+    ```
+  </Tab>
+</Tabs>

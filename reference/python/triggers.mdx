@@ -1,0 +1,315 @@
+---
+title: "Triggers — Composio Python SDK Reference"
+sidebarTitle: "Triggers"
+description: "composio.triggers subscribes to real-time events from connected apps. React to Gmail messages, GitHub events, Slack activity, and other webhook-driven triggers."
+---
+
+`composio.triggers` enables your application to react to real-time events from connected third-party services. Subscribe to a live push stream via `subscribe()`, create persistent trigger instances tied to specific connected accounts via `create()`, or verify and parse incoming webhook payloads via `verify_webhook()`. Each event arrives as a `TriggerEvent` TypedDict with normalized fields regardless of the underlying service.
+
+## `triggers.subscribe()`
+
+Open a real-time WebSocket subscription (backed by Pusher) and receive trigger events as they arrive. Returns a `TriggerSubscription` that you register callbacks on and then call `wait_forever()` to keep alive.
+
+```python
+def subscribe(timeout: float = 15.0) -> TriggerSubscription
+```
+
+<ParamField path="timeout" type="float" optional>
+  Maximum seconds to wait for the WebSocket connection to be established. Defaults to `15.0`. Raises `ComposioSDKTimeoutError` if the connection is not established in time.
+</ParamField>
+
+### Returns
+
+A `TriggerSubscription` object. Register callbacks with its `handle()` method, then block with `wait_forever()`.
+
+## `TriggerSubscription.handle()`
+
+Register a callback function for incoming trigger events. Accepts keyword filter arguments to scope the callback to specific triggers, toolkits, users, or accounts.
+
+```python
+def handle(
+    **filters: te.Unpack[TriggerEventFilters],
+) -> Callable[[TriggerCallback], TriggerCallback]
+```
+
+<ParamField path="trigger_slug" type="str" optional>
+  Only invoke this callback for events matching this trigger slug (e.g. `"GMAIL_NEW_GMAIL_MESSAGE"`).
+</ParamField>
+
+<ParamField path="toolkit" type="str" optional>
+  Only invoke this callback for events from this toolkit (e.g. `"gmail"`).
+</ParamField>
+
+<ParamField path="user_id" type="str" optional>
+  Only invoke this callback for events from this user ID.
+</ParamField>
+
+<ParamField path="connected_account_id" type="str" optional>
+  Only invoke this callback for events from this specific connected account.
+</ParamField>
+
+<ParamField path="trigger_id" type="str" optional>
+  Only invoke this callback for a specific trigger instance ID.
+</ParamField>
+
+<ParamField path="auth_config_id" type="str" optional>
+  Only invoke this callback for events using a specific auth config.
+</ParamField>
+
+## `triggers.create()`
+
+Create a persistent trigger instance attached to a connected account. The trigger will fire events whenever the configured condition is met in the external service.
+
+```python
+def create(
+    slug: str,
+    *,
+    user_id: str | None = None,
+    connected_account_id: str | None = None,
+    trigger_config: dict[str, Any] | None = None,
+) -> TriggerInstanceUpsertResponse
+```
+
+<ParamField path="slug" type="str" required>
+  The trigger type slug (e.g. `"GMAIL_NEW_GMAIL_MESSAGE"`, `"GITHUB_COMMIT_EVENT"`). Use `triggers.list()` to discover available slugs.
+</ParamField>
+
+<ParamField path="user_id" type="str" optional>
+  The user ID to create the trigger for. The SDK automatically finds the user's active connected account for the toolkit. Mutually exclusive with `connected_account_id`.
+</ParamField>
+
+<ParamField path="connected_account_id" type="str" optional>
+  Explicitly specify which connected account to attach the trigger to. Takes precedence over `user_id`.
+</ParamField>
+
+<ParamField path="trigger_config" type="dict" optional>
+  Trigger-specific configuration parameters (e.g. `{"repo": "my-repo", "owner": "my-org"}` for a GitHub trigger). Required for triggers that need configuration.
+</ParamField>
+
+## `triggers.list()`
+
+List available trigger types with optional filters.
+
+```python
+def list(
+    *,
+    cursor: str | None = None,
+    limit: int | None = None,
+    toolkit_slugs: list[str] | None = None,
+) -> TriggersTypeListResponse
+```
+
+<ParamField path="toolkit_slugs" type="list[str]" optional>
+  Filter to trigger types from specific toolkits (e.g. `["github", "gmail"]`).
+</ParamField>
+
+<ParamField path="limit" type="int" optional>
+  Maximum number of trigger types to return per page.
+</ParamField>
+
+<ParamField path="cursor" type="str" optional>
+  Pagination cursor for multi-page results.
+</ParamField>
+
+## `triggers.list_active()`
+
+List active trigger instances (subscriptions already created) with optional filters.
+
+```python
+def list_active(
+    trigger_ids: list[str] | None = None,
+    trigger_names: list[str] | None = None,
+    auth_config_ids: list[str] | None = None,
+    connected_account_ids: list[str] | None = None,
+    show_disabled: bool | None = None,
+    limit: int | None = None,
+    cursor: str | None = None,
+)
+```
+
+## `triggers.get_type()`
+
+Retrieve a specific trigger type schema by slug. Useful for inspecting required `trigger_config` fields.
+
+```python
+def get_type(slug: str) -> TriggersTypeRetrieveResponse
+```
+
+<ParamField path="slug" type="str" required>
+  The trigger type slug (e.g. `"GITHUB_COMMIT_EVENT"`).
+</ParamField>
+
+## `triggers.verify_webhook()`
+
+Verify an incoming webhook payload's HMAC-SHA256 signature, validate the timestamp, detect the payload version (V1, V2, or V3), and return a normalized `TriggerEvent`.
+
+```python
+def verify_webhook(
+    *,
+    id: str,
+    payload: str,
+    secret: str,
+    signature: str,
+    timestamp: str,
+    tolerance: int = 300,
+) -> VerifyWebhookResult
+```
+
+<ParamField path="id" type="str" required>
+  The `webhook-id` header value from the incoming request (format: `msg_xxx`).
+</ParamField>
+
+<ParamField path="payload" type="str" required>
+  The raw request body as a string.
+</ParamField>
+
+<ParamField path="secret" type="str" required>
+  Your webhook signing secret from the Composio dashboard.
+</ParamField>
+
+<ParamField path="signature" type="str" required>
+  The `webhook-signature` header value (format: `v1,base64EncodedSignature`).
+</ParamField>
+
+<ParamField path="timestamp" type="str" required>
+  The `webhook-timestamp` header value (Unix seconds as a string).
+</ParamField>
+
+<ParamField path="tolerance" type="int" optional>
+  Maximum allowed age of the webhook in seconds. Default `300` (5 minutes). Set to `0` to disable timestamp validation.
+</ParamField>
+
+Raises `WebhookSignatureVerificationError` if the signature is invalid or the timestamp is outside tolerance. Raises `WebhookPayloadError` if the payload cannot be parsed.
+
+## TriggerEvent
+
+Every callback receives a `TriggerEvent` TypedDict with these fields:
+
+<ResponseField name="id" type="str">
+  The trigger instance ID (`ti_xxx` nano-ID).
+</ResponseField>
+
+<ResponseField name="uuid" type="str">
+  The full UUID of the trigger event.
+</ResponseField>
+
+<ResponseField name="user_id" type="str">
+  The external user ID whose connected account fired the event.
+</ResponseField>
+
+<ResponseField name="trigger_slug" type="str">
+  The trigger type slug that fired (e.g. `"GMAIL_NEW_GMAIL_MESSAGE"`).
+</ResponseField>
+
+<ResponseField name="toolkit_slug" type="str">
+  The toolkit slug that owns the trigger (e.g. `"gmail"`).
+</ResponseField>
+
+<ResponseField name="payload" type="dict | None">
+  The normalized event payload. Shape varies per trigger type.
+</ResponseField>
+
+<ResponseField name="original_payload" type="dict | None">
+  The raw, unprocessed payload from the external service.
+</ResponseField>
+
+<ResponseField name="metadata" type="TriggerMetadataSchema">
+  Additional metadata including `trigger_config`, `trigger_data`, and `connected_account` details.
+
+  <Expandable title="TriggerMetadataSchema fields">
+    <ResponseField name="id" type="str">Trigger instance nano-ID.</ResponseField>
+    <ResponseField name="toolkit_slug" type="str">Toolkit slug.</ResponseField>
+    <ResponseField name="trigger_slug" type="str">Trigger type slug.</ResponseField>
+    <ResponseField name="trigger_config" type="dict">Configuration the trigger instance was created with.</ResponseField>
+    <ResponseField name="connected_account" type="TriggerConnectedAccountSchema">
+      Connected account info: `id`, `user_id`, `auth_config_id`, `status`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Code examples
+
+### Subscribe to all trigger events
+
+```python
+import os
+from composio import Composio
+
+composio = Composio(api_key=os.environ["COMPOSIO_API_KEY"])
+
+# Open the subscription
+subscription = composio.triggers.subscribe()
+
+@subscription.handle()
+def on_any_event(event):
+    print(f"[{event['toolkit_slug']}] {event['trigger_slug']} for user {event['user_id']}")
+    print(f"Payload: {event['payload']}")
+
+# Block until the connection drops
+subscription.wait_forever()
+```
+
+### Subscribe to Gmail new-message events for one user
+
+```python
+subscription = composio.triggers.subscribe()
+
+@subscription.handle(
+    trigger_slug="GMAIL_NEW_GMAIL_MESSAGE",
+    user_id="user_123",
+)
+def on_gmail_message(event):
+    subject = event["payload"].get("subject", "(no subject)")
+    sender = event["payload"].get("sender", "unknown")
+    print(f"New email from {sender}: {subject}")
+
+subscription.wait_forever()
+```
+
+### Create a GitHub commit trigger for a user
+
+```python
+# Ensure the user has a GitHub connected account first
+trigger = composio.triggers.create(
+    slug="GITHUB_COMMIT_EVENT",
+    user_id="user_123",
+    trigger_config={
+        "owner": "my-org",
+        "repo": "my-repo",
+    },
+)
+
+print(f"Trigger created: {trigger.id}")
+```
+
+### Verify an incoming webhook (Flask example)
+
+```python
+import os
+from flask import Flask, request
+from composio import Composio
+from composio.exceptions import WebhookSignatureVerificationError
+
+app = Flask(__name__)
+composio = Composio(api_key=os.environ["COMPOSIO_API_KEY"])
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        result = composio.triggers.verify_webhook(
+            id=request.headers.get("webhook-id", ""),
+            payload=request.get_data(as_text=True),
+            signature=request.headers.get("webhook-signature", ""),
+            timestamp=request.headers.get("webhook-timestamp", ""),
+            secret=os.environ["COMPOSIO_WEBHOOK_SECRET"],
+        )
+        print(f"Version: {result['version']}")
+        print(f"Trigger: {result['payload']['trigger_slug']}")
+        return "OK", 200
+    except WebhookSignatureVerificationError:
+        return "Unauthorized", 401
+```
+
+<Tip>
+  Create trigger instances before opening the subscription. The subscription listens for all events on your project; the `handle()` filter arguments narrow delivery to the right callbacks. You can register multiple callbacks with different filter combinations on the same subscription.
+</Tip>

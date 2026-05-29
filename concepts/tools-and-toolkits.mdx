@@ -1,0 +1,344 @@
+---
+title: "Tools and Toolkits in Composio"
+sidebarTitle: "Tools & Toolkits"
+description: "Tools are individual actions agents can perform. Toolkits are collections of related tools for an app. Learn how to discover, filter, and execute tools in Composio."
+---
+
+Tools are the actions your agent takes — "fetch emails", "create a GitHub issue", "send a Slack message". Each tool maps to a specific API operation and carries a JSON Schema that describes its inputs and outputs. Toolkits group related tools for a single service: the `github` toolkit contains `GITHUB_CREATE_ISSUE`, `GITHUB_GET_REPOS`, `GITHUB_LIST_PULL_REQUESTS`, and hundreds more. Composio automatically converts each tool's schema into the format expected by your AI provider.
+
+## Getting tools
+
+Use `composio.tools.get()` to retrieve tools in your provider's format. You must provide a user ID so Composio can scope authentication to that user's connected accounts.
+
+**By toolkit:**
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+    import { OpenAIProvider } from '@composio/openai';
+
+    const composio = new Composio({
+      apiKey: process.env.COMPOSIO_API_KEY,
+      provider: new OpenAIProvider(),
+    });
+
+    // Get the most important tools from a toolkit
+    const tools = await composio.tools.get("user_123", {
+      toolkits: ["github"],
+    });
+
+    // Get tools from multiple toolkits
+    const multiTools = await composio.tools.get("user_123", {
+      toolkits: ["github", "gmail", "slack"],
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+    from composio_openai import OpenAIProvider
+
+    composio = Composio(
+        api_key="your_api_key",
+        provider=OpenAIProvider(),
+    )
+
+    # Get the most important tools from a toolkit
+    tools = composio.tools.get("user_123", toolkits=["github"])
+
+    # Get tools from multiple toolkits
+    multi_tools = composio.tools.get(
+        "user_123",
+        toolkits=["github", "gmail", "slack"],
+    )
+    ```
+  </Tab>
+</Tabs>
+
+**By specific tool slug:**
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Get one specific tool
+    const tool = await composio.tools.get("user_123", "GITHUB_CREATE_ISSUE");
+
+    // Get several specific tools
+    const tools = await composio.tools.get("user_123", {
+      tools: ["GITHUB_CREATE_ISSUE", "GMAIL_FETCH_EMAILS", "SLACK_SEND_MESSAGE"],
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    # Get one specific tool
+    tool = composio.tools.get("user_123", "GITHUB_CREATE_ISSUE")
+
+    # Get several specific tools
+    tools = composio.tools.get(
+        "user_123",
+        tools=["GITHUB_CREATE_ISSUE", "GMAIL_FETCH_EMAILS", "SLACK_SEND_MESSAGE"],
+    )
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  When you fetch tools by toolkit without a `limit`, Composio automatically applies an `important` filter to return only the most relevant tools. This avoids overloading the model's context. Pass `important: false` to disable this behavior and receive all tools.
+</Note>
+
+## Executing a tool directly
+
+Use `composio.tools.execute()` to call a tool without involving an AI model — useful for scripting, testing, and batch workflows.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+    const result = await composio.tools.execute("GITHUB_CREATE_ISSUE", {
+      userId: "user_123",
+      arguments: {
+        owner: "my-org",
+        repo: "my-repo",
+        title: "Bug: Login fails on Safari",
+        body: "Steps to reproduce...",
+      },
+      dangerouslySkipVersionCheck: true,
+    });
+
+    console.log(result.successful); // true
+    console.log(result.data);       // { number: 42, html_url: "..." }
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+
+    composio = Composio(api_key="your_api_key")
+
+    result = composio.tools.execute(
+        "GITHUB_CREATE_ISSUE",
+        user_id="user_123",
+        arguments={
+            "owner": "my-org",
+            "repo": "my-repo",
+            "title": "Bug: Login fails on Safari",
+            "body": "Steps to reproduce...",
+        },
+    )
+
+    print(result.successful)  # True
+    print(result.data)        # { "number": 42, "html_url": "..." }
+    ```
+  </Tab>
+</Tabs>
+
+The `ToolExecuteResponse` contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `successful` | `boolean` | Whether the tool call succeeded |
+| `data` | `Record<string, unknown>` | App-specific response payload |
+| `error` | `string \| null` | Error message if `successful` is `false` |
+| `logId` | `string` | Composio log ID for debugging |
+
+<Warning>
+  Direct tool execution requires a pinned toolkit version to prevent unexpected behavior when new toolkit versions are released. Either pass `version` explicitly (e.g., `"20250909_00"`) or set `dangerouslySkipVersionCheck: true` when using `latest`. See the [observability guide](/guides/observability) for how to inspect log IDs.
+</Warning>
+
+## Listing available toolkits
+
+Use `composio.toolkits.get()` to explore the Composio toolkit catalog.
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+    // List all toolkits
+    const { items } = await composio.toolkits.get({});
+    items.forEach((tk) => console.log(tk.slug, tk.name));
+
+    // Get a specific toolkit and its auth details
+    const github = await composio.toolkits.get("github");
+    console.log(github.name);              // "GitHub"
+    console.log(github.authConfigDetails); // OAuth2 config details
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+
+    composio = Composio(api_key="your_api_key")
+
+    # List all toolkits
+    response = composio.toolkits.get({})
+    for tk in response.items:
+        print(tk.slug, tk.name)
+
+    # Get a specific toolkit and its auth details
+    github = composio.toolkits.get("github")
+    print(github.name)               # "GitHub"
+    print(github.auth_config_details)  # OAuth2 config details
+    ```
+  </Tab>
+</Tabs>
+
+You can filter by category to narrow results:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const devTools = await composio.toolkits.get({
+      category: "developer-tools",
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    dev_tools = composio.toolkits.get({"category": "developer-tools"})
+    ```
+  </Tab>
+</Tabs>
+
+## Filtering by tags
+
+Tags let you narrow a tool set by usage pattern without listing specific slugs. Common tag values:
+
+| Tag | Description |
+|---|---|
+| `important` | High-signal tools most commonly used by agents (applied automatically when fetching by toolkit) |
+| `read` | Non-mutating tools — list, get, search operations |
+| `write` | Mutating tools — create, update, delete operations |
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Only read-only tools from GitHub
+    const readTools = await composio.tools.get("user_123", {
+      toolkits: ["github"],
+      tags: ["read"],
+    });
+
+    // Only write tools — useful for an agent that should only mutate data
+    const writeTools = await composio.tools.get("user_123", {
+      toolkits: ["gmail"],
+      tags: ["write"],
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    # Only read-only tools from GitHub
+    read_tools = composio.tools.get(
+        "user_123",
+        toolkits=["github"],
+        tags=["read"],
+    )
+
+    # Only write tools
+    write_tools = composio.tools.get(
+        "user_123",
+        toolkits=["gmail"],
+        tags=["write"],
+    )
+    ```
+  </Tab>
+</Tabs>
+
+You can also search across all toolkits by keyword:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const results = await composio.tools.get("user_123", {
+      search: "create pull request",
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    results = composio.tools.get("user_123", search="create pull request")
+    ```
+  </Tab>
+</Tabs>
+
+## Tool schemas
+
+Every Composio tool carries a JSON Schema describing its inputs and outputs. Composio automatically converts these schemas into the format your AI provider expects — OpenAI function-calling objects, Anthropic tool definitions, LangChain tools, and so on.
+
+You can inspect a tool's raw schema before passing it to a model:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const tool = await composio.tools.getRawComposioToolBySlug("GITHUB_CREATE_ISSUE");
+
+    console.log(tool.slug);            // "GITHUB_CREATE_ISSUE"
+    console.log(tool.name);            // "Create Issue"
+    console.log(tool.description);     // "Creates a new issue in a GitHub repo"
+    console.log(tool.inputParameters); // JSON Schema object
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    tool = composio.tools.get_raw_composio_tool_by_slug("GITHUB_CREATE_ISSUE")
+
+    print(tool.slug)             # "GITHUB_CREATE_ISSUE"
+    print(tool.name)             # "Create Issue"
+    print(tool.description)      # "Creates a new issue in a GitHub repo"
+    print(tool.input_parameters) # JSON Schema object
+    ```
+  </Tab>
+</Tabs>
+
+You can also modify schemas at fetch time using `modifySchema` to add custom metadata or rephrase descriptions for your model:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const tools = await composio.tools.get("user_123", {
+      toolkits: ["github"],
+    }, {
+      modifySchema: ({ toolSlug, toolkitSlug, schema }) => ({
+        ...schema,
+        description: `[${toolkitSlug.toUpperCase()}] ${schema.description}`,
+      }),
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    def modify_schema(tool_slug, toolkit_slug, schema):
+        schema["description"] = f"[{toolkit_slug.upper()}] {schema['description']}"
+        return schema
+
+    tools = composio.tools.get(
+        "user_123",
+        toolkits=["github"],
+        modify_schema=modify_schema,
+    )
+    ```
+  </Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Custom Tools" href="/guides/custom-tools">
+    Register your own tools alongside Composio tools
+  </Card>
+  <Card title="Tool Router" href="/guides/tool-router">
+    Route tool calls through sessions for dynamic discovery
+  </Card>
+  <Card title="Connected Accounts" href="/concepts/connected-accounts">
+    Manage the credentials tools use when they execute
+  </Card>
+  <Card title="Providers Overview" href="/providers/overview">
+    See all supported AI framework providers
+  </Card>
+</CardGroup>

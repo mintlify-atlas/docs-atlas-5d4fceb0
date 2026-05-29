@@ -1,0 +1,350 @@
+---
+title: "Connected Accounts: Managing User Credentials"
+sidebarTitle: "Connected Accounts"
+description: "Connected accounts store OAuth tokens and API keys for each user's toolkit connections. Composio handles token refresh automatically."
+---
+
+A connected account is created when a user authenticates with a toolkit. It stores their credentials — OAuth tokens or API keys — and links them to the user ID you provide. Composio handles token refresh automatically, so you never need to manage expiration or re-authentication logic yourself. Connected accounts persist across sessions, meaning a user who connected GitHub last week can pick up a new conversation today without re-authenticating.
+
+## Listing connected accounts
+
+Retrieve connected accounts for a user, a toolkit, or both:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+    // All connected accounts for a user
+    const { items } = await composio.connectedAccounts.list({
+      userIds: ["user_123"],
+    });
+
+    items.forEach((account) => {
+      console.log(account.id);             // "ca_abc123"
+      console.log(account.toolkit.slug);   // "github"
+      console.log(account.status);         // "ACTIVE"
+    });
+
+    // Filter by toolkit
+    const githubAccounts = await composio.connectedAccounts.list({
+      userIds: ["user_123"],
+      toolkitSlugs: ["github"],
+    });
+
+    // Filter by status
+    const activeAccounts = await composio.connectedAccounts.list({
+      userIds: ["user_123"],
+      statuses: ["ACTIVE"],
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+
+    composio = Composio(api_key="your_api_key")
+
+    # All connected accounts for a user
+    response = composio.connected_accounts.list(user_ids=["user_123"])
+
+    for account in response.items:
+        print(account.id)            # "ca_abc123"
+        print(account.toolkit.slug)  # "github"
+        print(account.status)        # "ACTIVE"
+
+    # Filter by toolkit
+    github_accounts = composio.connected_accounts.list(
+        user_ids=["user_123"],
+        toolkit_slugs=["github"],
+    )
+
+    # Filter by status
+    active_accounts = composio.connected_accounts.list(
+        user_ids=["user_123"],
+        statuses=["ACTIVE"],
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Getting a specific account
+
+Fetch the full details of a single connected account by its ID:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const account = await composio.connectedAccounts.get("ca_abc123");
+
+    console.log(account.status);       // "ACTIVE"
+    console.log(account.toolkit.slug); // "github"
+    console.log(account.userId);       // "user_123"
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    account = composio.connected_accounts.get("ca_abc123")
+
+    print(account.status)        # "ACTIVE"
+    print(account.toolkit.slug)  # "github"
+    print(account.user_id)       # "user_123"
+    ```
+  </Tab>
+</Tabs>
+
+## Creating a connection
+
+To connect a user to a toolkit, initiate a connection using `connectedAccounts.link()`. This returns a `ConnectionRequest` that includes a `redirectUrl` — send the user there to complete OAuth or enter their API key.
+
+<Note>
+  `connectedAccounts.link()` is the recommended method for OAuth-based toolkits. It works with both Composio-managed and custom auth configs.
+</Note>
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { Composio } from '@composio/core';
+
+    const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+    const connectionRequest = await composio.connectedAccounts.link(
+      "user_123",
+      "ac_gmail_oauth2", // your auth config ID
+      {
+        callbackUrl: "https://myapp.com/auth/callback",
+      }
+    );
+
+    console.log(connectionRequest.redirectUrl);
+    // "https://connect.composio.dev/link/ln_abc123"
+
+    // Redirect the user to this URL in your app
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import Composio
+
+    composio = Composio(api_key="your_api_key")
+
+    connection_request = composio.connected_accounts.link(
+        user_id="user_123",
+        auth_config_id="ac_gmail_oauth2",
+        callback_url="https://myapp.com/auth/callback",
+    )
+
+    print(connection_request.redirect_url)
+    # "https://connect.composio.dev/link/ln_abc123"
+
+    # Redirect the user to this URL in your app
+    ```
+  </Tab>
+</Tabs>
+
+For API-key-based toolkits, use `connectedAccounts.initiate()` and pass the key directly in the connection state — no redirect required:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    import { AuthScheme } from '@composio/core';
+
+    const connectionRequest = await composio.connectedAccounts.initiate(
+      "user_123",
+      "ac_linear_apikey",
+      {
+        config: AuthScheme.ApiKey({ api_key: "lin_api_your_key_here" }),
+      }
+    );
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    from composio import AuthScheme
+
+    connection_request = composio.connected_accounts.initiate(
+        user_id="user_123",
+        auth_config_id="ac_linear_apikey",
+        config=AuthScheme.api_key(api_key="lin_api_your_key_here"),
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Waiting for connection
+
+After redirecting a user for OAuth, poll until the connection becomes active using `waitForConnection()`:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const connectionRequest = await composio.connectedAccounts.link(
+      "user_123",
+      "ac_gmail_oauth2"
+    );
+
+    console.log(connectionRequest.redirectUrl);
+    // Redirect the user, then wait:
+
+    const connectedAccount = await connectionRequest.waitForConnection(60000); // 60s timeout
+    console.log(connectedAccount.status); // "ACTIVE"
+    console.log(connectedAccount.id);     // "ca_abc123"
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    connection_request = composio.connected_accounts.link(
+        user_id="user_123",
+        auth_config_id="ac_gmail_oauth2",
+    )
+
+    print(connection_request.redirect_url)
+    # Redirect the user, then wait:
+
+    connected_account = connection_request.wait_for_connection(timeout=60)  # 60s timeout
+    print(connected_account.status)  # "ACTIVE"
+    print(connected_account.id)      # "ca_abc123"
+    ```
+  </Tab>
+</Tabs>
+
+You can also poll by connected account ID directly:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const account = await composio.connectedAccounts.waitForConnection(
+      "ca_abc123",
+      120000 // 2 minute timeout
+    );
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    account = composio.connected_accounts.wait_for_connection(
+        "ca_abc123",
+        timeout=120,  # 2 minutes
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Multiple accounts per toolkit
+
+A user can connect multiple accounts for the same toolkit — for example, a work Gmail and a personal Gmail. By default, `connectedAccounts.link()` and `connectedAccounts.initiate()` raise an error if an active connection already exists for the same auth config and user. Pass `allowMultiple: true` to permit multiple connections:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Connect a second Gmail account for the same user
+    const secondConnection = await composio.connectedAccounts.link(
+      "user_123",
+      "ac_gmail_oauth2",
+      { allowMultiple: true }
+    );
+
+    // List both Gmail connections for this user
+    const gmailAccounts = await composio.connectedAccounts.list({
+      userIds: ["user_123"],
+      toolkitSlugs: ["gmail"],
+    });
+    console.log(gmailAccounts.items.length); // 2
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    # Connect a second Gmail account for the same user
+    second_connection = composio.connected_accounts.link(
+        user_id="user_123",
+        auth_config_id="ac_gmail_oauth2",
+        allow_multiple=True,
+    )
+
+    # List both Gmail connections for this user
+    gmail_accounts = composio.connected_accounts.list(
+        user_ids=["user_123"],
+        toolkit_slugs=["gmail"],
+    )
+    print(len(gmail_accounts.items))  # 2
+    ```
+  </Tab>
+</Tabs>
+
+When a session needs to use a specific account, pass the connected account ID via `connectedAccounts` in the session config:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    const session = await composio.create("user_123", {
+      connectedAccounts: {
+        gmail: ["ca_work_gmail_id"],
+      },
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    session = composio.create(
+        user_id="user_123",
+        connected_accounts={
+            "gmail": ["ca_work_gmail_id"],
+        },
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Connection status
+
+A connected account's `status` field reflects the current state of the credentials:
+
+| Status | Meaning |
+|---|---|
+| `ACTIVE` | Credentials are valid and the account can be used |
+| `INITIATED` | The OAuth flow has been started but not completed |
+| `FAILED` | Authentication failed or was rejected by the provider |
+| `DISABLED` | The account has been manually disabled via the API |
+
+<Note>
+  Composio automatically refreshes OAuth tokens before they expire. A token expiry does not change the status to `FAILED` — you only see `FAILED` if the user explicitly revokes access or the provider rejects the credentials.
+</Note>
+
+You can enable or disable an account programmatically:
+
+<Tabs items={["TypeScript", "Python"]}>
+  <Tab value="TypeScript">
+    ```typescript
+    // Disable a connected account
+    await composio.connectedAccounts.disable("ca_abc123");
+
+    // Re-enable it later
+    await composio.connectedAccounts.enable("ca_abc123");
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    # Disable a connected account
+    composio.connected_accounts.disable("ca_abc123")
+
+    # Re-enable it later
+    composio.connected_accounts.enable("ca_abc123")
+    ```
+  </Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Authentication" href="/concepts/authentication">
+    Auth configs, OAuth flows, and Connect Link generation
+  </Card>
+  <Card title="Sessions" href="/concepts/sessions">
+    Scoping connected accounts to a session
+  </Card>
+  <Card title="Authenticating Users" href="/guides/authenticating-users">
+    Step-by-step guide to onboarding users with Connect Links
+  </Card>
+  <Card title="CLI Overview" href="/cli/overview">
+    Manage connected accounts from the command line
+  </Card>
+</CardGroup>

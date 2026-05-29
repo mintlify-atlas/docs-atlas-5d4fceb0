@@ -1,47 +1,204 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Composio"
+sidebarTitle: "Quickstart"
+description: "Install the Composio SDK, connect your first toolkit, and run a tool from an AI agent in under 5 minutes. Works with TypeScript and Python."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
-
-<Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
-
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
-
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
-
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+This guide walks you through installing Composio, initializing the client, fetching tools from a toolkit, and running a real AI agent that uses those tools. By the end you will have a working agent that can query the HackerNews API through Composio.
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  Set `COMPOSIO_API_KEY` as an environment variable before you start. The SDK reads it automatically so you never have to hard-code credentials in your source files.
 </Tip>
+
+<Steps>
+
+<Step title="Install the SDK">
+
+Install the core Composio package plus the provider adapter for your AI framework. The examples below use OpenAI.
+
+<CodeGroup>
+
+```bash npm (TypeScript)
+npm install @composio/core @composio/openai openai
+```
+
+```bash yarn (TypeScript)
+yarn add @composio/core @composio/openai openai
+```
+
+```bash pnpm (TypeScript)
+pnpm add @composio/core @composio/openai openai
+```
+
+```bash pip (Python)
+pip install composio composio-openai openai
+```
+
+```bash uv (Python)
+uv add composio composio-openai openai
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Set your API key">
+
+Get your API key from the [Composio dashboard](https://app.composio.dev) and export it as an environment variable.
+
+```bash
+export COMPOSIO_API_KEY=your_api_key_here
+```
+
+The SDK automatically reads `COMPOSIO_API_KEY` from the environment, so you can also set it in a `.env` file for local development.
+
+</Step>
+
+<Step title="Initialize the client">
+
+Create a `Composio` instance. If `COMPOSIO_API_KEY` is set in the environment, you can omit the `apiKey` option entirely.
+
+<Tabs>
+<Tab title="TypeScript">
+```typescript
+import { Composio } from '@composio/core';
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+});
+```
+</Tab>
+<Tab title="Python">
+```python
+import os
+from composio import Composio
+
+composio = Composio(
+    api_key=os.environ['COMPOSIO_API_KEY'],
+)
+```
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step title="Get tools from a toolkit">
+
+Fetch the tools for a specific user and toolkit. The tools are automatically wrapped in the format your AI framework expects — no manual schema conversion required.
+
+<Tabs>
+<Tab title="TypeScript">
+```typescript
+import { Composio } from '@composio/core';
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+});
+
+// Fetch HackerNews tools for this user
+const tools = await composio.tools.get('user@example.com', {
+  toolkits: ['HACKERNEWS'],
+});
+
+console.log(`Loaded ${tools.length} tools`);
+```
+</Tab>
+<Tab title="Python">
+```python
+import os
+from composio import Composio
+
+composio = Composio(api_key=os.environ['COMPOSIO_API_KEY'])
+
+# Fetch HackerNews tools for this user
+tools = composio.tools.get(
+    user_id='user@example.com',
+    toolkits=['HACKERNEWS'],
+)
+
+print(f"Loaded {len(tools)} tools")
+```
+</Tab>
+</Tabs>
+
+<Note>
+  The `user_id` / first argument scopes tool execution to a specific user's connected accounts. Use a stable identifier like a database UUID in production — avoid `"default"` outside of experimentation.
+</Note>
+
+</Step>
+
+<Step title="Run an agent">
+
+Pass the tools directly to your AI framework. Composio handles tool execution automatically when the model calls a tool.
+
+<Tabs>
+<Tab title="TypeScript">
+```typescript
+import { Composio } from '@composio/core';
+import { OpenAI } from 'openai';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
+
+const userId = 'user@example.com';
+
+// Fetch tools for the user
+const tools = await composio.tools.get(userId, {
+  toolkits: ['HACKERNEWS'],
+});
+
+// First model call — ask the model to pick and call a tool
+const response = await openai.chat.completions.create({
+  model: 'gpt-4o-mini',
+  messages: [
+    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'user', content: "What is the latest HackerNews post about?" },
+  ],
+  tools: tools,
+  tool_choice: 'auto',
+});
+
+// Execute any tool calls the model requested and get the final response
+const result = await composio.provider.handleToolCalls(userId, response);
+console.log(result);
+```
+</Tab>
+<Tab title="Python">
+```python
+import os
+from openai import OpenAI
+from composio import Composio
+
+openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+composio = Composio(api_key=os.environ['COMPOSIO_API_KEY'])
+
+user_id = 'user@example.com'
+
+# Fetch tools for the user
+tools = composio.tools.get(user_id=user_id, toolkits=['HACKERNEWS'])
+
+# First model call — ask the model to pick and call a tool
+response = openai_client.chat.completions.create(
+    model='gpt-4o-mini',
+    messages=[
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {'role': 'user', 'content': 'What is the latest HackerNews post about?'},
+    ],
+    tools=tools,
+    tool_choice='auto',
+)
+
+# Execute any tool calls the model requested and get the final response
+result = composio.provider.handle_tool_calls(user_id, response)
+print(result)
+```
+</Tab>
+</Tabs>
+
+</Step>
+
+</Steps>
+
+<Note>
+  The examples above use OpenAI. Composio supports many other AI frameworks with dedicated provider adapters — see [Providers](/providers/overview) for the full list and setup instructions.
+</Note>

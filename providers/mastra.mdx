@@ -1,0 +1,144 @@
+---
+title: "Composio with Mastra: Agentic Tool Integration"
+sidebarTitle: "Mastra"
+description: "Use Composio tools with the Mastra agent framework. MastraProvider returns tools in Mastra's native format for use in any Mastra agent."
+---
+
+Composio's Mastra provider formats tools for the Mastra agent framework using `createTool` from `@mastra/core/tools`. Pass Composio tools to any Mastra agent and let your agents use GitHub, Gmail, Slack, and hundreds more apps with managed authentication — no custom tool wrappers needed.
+
+<Note>
+  The Mastra provider is TypeScript-only. For Python agent frameworks, see [LangChain](/providers/langchain) or [CrewAI](/providers/crewai).
+</Note>
+
+## Installation
+
+<CodeGroup>
+  ```bash npm
+  npm install @composio/core @composio/mastra @mastra/core @ai-sdk/openai
+  ```
+  ```bash yarn
+  yarn add @composio/core @composio/mastra @mastra/core @ai-sdk/openai
+  ```
+  ```bash pnpm
+  pnpm add @composio/core @composio/mastra @mastra/core @ai-sdk/openai
+  ```
+</CodeGroup>
+
+Set your API keys in a `.env` file:
+
+```txt .env
+COMPOSIO_API_KEY=your_composio_api_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+## Example
+
+The `MastraProvider` returns a `MastraToolCollection` — an object keyed by tool slug — that you pass directly to the `tools` option when constructing a Mastra `Agent`.
+
+```typescript
+import { Composio } from '@composio/core';
+import { MastraProvider } from '@composio/mastra';
+import { Agent } from '@mastra/core/agent';
+import { openai } from '@ai-sdk/openai';
+import 'dotenv/config';
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new MastraProvider(),
+});
+
+// Tools are returned as a MastraToolCollection (Record<string, MastraTool>)
+const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER');
+
+const agent = new Agent({
+  id: 'hackernews-agent',
+  name: 'HackerNews Agent',
+  instructions: 'You are a helpful assistant that can look up HackerNews user profiles.',
+  model: openai('gpt-4o-mini'),
+  tools,
+});
+
+const { text } = await agent.generate([
+  { role: 'user', content: "Tell me about the user 'pg' on HackerNews" },
+]);
+
+console.log(text);
+```
+
+## Sending email with Gmail
+
+This example shows how to give a Mastra agent access to Gmail and have it send an email:
+
+```typescript
+import { Composio } from '@composio/core';
+import { MastraProvider } from '@composio/mastra';
+import { Agent } from '@mastra/core/agent';
+import { openai } from '@ai-sdk/openai';
+import 'dotenv/config';
+
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new MastraProvider(),
+});
+
+const tools = await composio.tools.get('default', {
+  tools: ['GMAIL_SEND_EMAIL'],
+});
+
+const agent = new Agent({
+  id: 'gmail-agent',
+  name: 'Gmail Agent',
+  instructions: 'You are a helpful Gmail assistant. Send emails concisely and professionally.',
+  model: openai('gpt-4o-mini'),
+  tools,
+});
+
+const { text, error } = await agent.generate([
+  {
+    role: 'user',
+    content: 'Send an email to team@example.com saying "Hi from Mastra and Composio"',
+  },
+]);
+
+if (error) {
+  console.error('Agent error:', error);
+} else {
+  console.log('Agent response:', text);
+}
+```
+
+## Execution hooks
+
+Use `beforeExecute` and `afterExecute` hooks on `composio.tools.get()` for logging, tracing, or modifying tool inputs and outputs at runtime:
+
+```typescript
+const tools = await composio.tools.get('default', 'HACKERNEWS_GET_USER', {
+  modifySchema: ({ toolSlug, schema }) => {
+    // Optionally modify the input schema before it's compiled
+    return schema;
+  },
+  beforeExecute: ({ toolSlug, toolkitSlug, params }) => {
+    console.log(`Executing ${toolSlug} from ${toolkitSlug}`, params);
+    return params; // return (optionally modified) params
+  },
+  afterExecute: ({ toolSlug, toolkitSlug, result }) => {
+    console.log(`${toolSlug} completed`, result);
+    return result; // return (optionally modified) result
+  },
+});
+```
+
+## Strict mode
+
+Pass `{ strict: true }` to `MastraProvider` to strip optional properties from tool input schemas, which can improve reliability with models that prefer tighter schemas:
+
+```typescript
+const composio = new Composio({
+  apiKey: process.env.COMPOSIO_API_KEY,
+  provider: new MastraProvider({ strict: true }),
+});
+```
+
+## How it works
+
+`MastraProvider` extends `BaseAgenticProvider` and uses `createTool` from `@mastra/core/tools` to build each tool. Input and output schemas are converted via `@mastra/schema-compat` and internal `$ref` references are resolved before schema compilation to ensure compatibility with Mastra's AJV-based validator. When the agent calls a tool, Composio's executor runs the API call and returns the result directly to Mastra.
