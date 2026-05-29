@@ -1,7 +1,7 @@
 ---
-title: "Tools API — Composio TypeScript SDK Reference"
+title: "Tools API — Composio TypeScript SDK Reference Guide"
 sidebarTitle: "Tools"
-description: "composio.tools provides get() to retrieve formatted tools for your AI provider and execute() to run any tool directly with arguments. Supports sessions and direct access."
+description: "composio.tools.get() retrieves provider-formatted tools and execute() runs any Composio tool directly with arguments, modifiers, and custom tool support."
 ---
 
 The `Tools` class manages tool retrieval and execution. Use `composio.tools.get()` to retrieve tools formatted for your AI provider, and `composio.tools.execute()` to run any tool directly. All tools — both built-in Composio tools and custom tools registered via `createCustomTool()` — are accessible through this interface.
@@ -143,6 +143,10 @@ composio.tools.execute(
 
 <ResponseField name="logId" type="string | undefined">
   Composio log identifier for this execution, useful for debugging.
+</ResponseField>
+
+<ResponseField name="sessionInfo" type="unknown | undefined">
+  Optional session metadata returned by the backend for tool router session executions.
 </ResponseField>
 
 ## tools.getRawComposioTools()

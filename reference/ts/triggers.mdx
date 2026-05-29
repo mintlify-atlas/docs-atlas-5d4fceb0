@@ -1,7 +1,7 @@
 ---
 title: "Triggers API — Composio TypeScript SDK Reference"
 sidebarTitle: "Triggers"
-description: "composio.triggers subscribes to real-time webhook events from connected apps. React to new emails, GitHub events, Slack messages, and other app activity."
+description: "composio.triggers subscribes to real-time events from external apps. React to new emails, GitHub PRs, Slack messages, and more via WebSocket subscriptions."
 ---
 
 The `Triggers` class enables real-time event-driven automation. When a trigger fires — a new email arrives, a GitHub PR is opened, a Slack message is posted — Composio delivers the event to your callback via Pusher WebSocket or HTTPS webhook. Triggers are attached to connected accounts, so each user's events are isolated.
@@ -210,6 +210,25 @@ Retrieve a specific trigger type by its slug.
 ```typescript
 composio.triggers.getType(slug: string): Promise<TriggersTypeRetrieveResponse>
 ```
+
+## triggers.update()
+
+Update an existing trigger instance's configuration.
+
+```typescript
+composio.triggers.update(
+  triggerId: string,
+  body: TriggerInstanceManageUpdateParams
+): Promise<TriggerInstanceManageUpdateResponse>
+```
+
+<ParamField body="triggerId" type="string" required>
+  ID of the trigger instance to update.
+</ParamField>
+
+<ParamField body="body" type="TriggerInstanceManageUpdateParams" required>
+  Fields to update on the trigger instance (e.g. `triggerConfig`, `status`).
+</ParamField>
 
 ## triggers.delete()
 

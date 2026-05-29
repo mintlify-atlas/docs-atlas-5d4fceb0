@@ -24,7 +24,7 @@ Composio provides adapters for Google's Gemini models through both the `@google/
   </Tab>
   <Tab title="Python (Gemini)">
     ```bash
-    pip install composio composio-google google-genai
+    pip install composio composio-gemini google-genai
     ```
   </Tab>
   <Tab title="Python (ADK)">
@@ -92,11 +92,11 @@ GOOGLE_API_KEY=your_google_api_key
   <Tab title="Python">
     ```python
     from composio import Composio
-    from composio_google import GoogleProvider
+    from composio_gemini import GeminiProvider
     from google import genai
     from google.genai import types
 
-    composio = Composio(provider=GoogleProvider())
+    composio = Composio(provider=GeminiProvider())
     client = genai.Client()
 
     # Tools are returned as FunctionDeclaration objects
@@ -106,18 +106,6 @@ GOOGLE_API_KEY=your_google_api_key
     chat = client.chats.create(model="gemini-2.0-flash", config=config)
 
     response = chat.send_message("Star the composiohq/composio repo on GitHub")
-
-    # Agentic loop — keep executing function calls until Gemini responds with text
-    while response.function_calls:
-        parts = []
-        for fc in response.function_calls:
-            result = composio.provider.execute_tool_call(
-                user_id="default", function_call=fc
-            )
-            parts.append(
-                types.Part.from_function_response(name=fc.name, response=result)
-            )
-        response = chat.send_message(parts)
 
     print(response.text)
     ```
@@ -181,7 +169,7 @@ for event in events:
 ```
 
 <Note>
-  The Google ADK integration (`composio-google-adk`) is Python-only. The Gemini function calling integration (`@composio/google`) is available for both TypeScript and Python.
+  The Google ADK integration (`composio-google-adk`) is Python-only. The Gemini function calling integration (`@composio/google` for TypeScript, `composio-gemini` for Python) supports both languages.
 </Note>
 
 ## Executing tool calls

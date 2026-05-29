@@ -1,7 +1,7 @@
 ---
-title: "Composio Python SDK Reference"
+title: "Python SDK — Composio Constructor and Attribute Reference"
 sidebarTitle: "Composio"
-description: "The Composio class is the entry point for the Python SDK. Initialize with an API key and optional provider to access tools, connected accounts, triggers, and MCP."
+description: "Entry point for the Composio Python SDK. Pass your API key and optional provider to access tools, connected accounts, auth configs, triggers, and MCP."
 ---
 
 The `Composio` class is the root entry point for the Composio Python SDK. Initialize it with your API key and optional provider, then access tools, connected accounts, auth configs, triggers, and MCP through its attributes. By default the SDK uses OpenAI as its provider, but you can pass any supported provider to get correctly-typed tool collections for your framework.
@@ -126,14 +126,14 @@ Composio(
 ## `composio.create()`
 
 ```python
-composio.create(user_id: str) -> SessionContext
+composio.create(*, user_id: str, ...) -> ToolRouterSession
 ```
 
-Create a tool-router session for the given user. The returned `SessionContext` scopes tool fetching and execution to that user and provides a high-level interface for agentic loops.
+Create a tool-router session for the given user. `user_id` is a keyword-only argument. The returned `ToolRouterSession` scopes tool fetching and execution to that user and provides a high-level interface for agentic loops, including connection management and MCP access.
 
 ```python
 session = composio.create(user_id="user_123")
-tools = session.get_tools(toolkits=["github"])
+tools = session.tools()
 ```
 
 ## Complete initialization example

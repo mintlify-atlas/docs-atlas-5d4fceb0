@@ -1,7 +1,7 @@
 ---
-title: "Tools API — Composio Python SDK Reference"
+title: "Composio Python SDK Tools Reference — get and execute"
 sidebarTitle: "Tools"
-description: "composio.tools provides get() to retrieve tools for your AI provider and execute() to run tools directly. Supports modifiers for transforming inputs and outputs."
+description: "composio.tools provides get() to fetch provider-wrapped schemas and execute() to run tools. Use modifiers to transform inputs, outputs, and schemas."
 ---
 
 `composio.tools` is the primary interface for fetching and executing Composio tools. Call `get()` to retrieve provider-wrapped tool schemas ready to pass to your LLM, and `execute()` to invoke a tool directly with a dictionary of arguments. Both methods support an optional `modifiers` list for intercepting and transforming inputs, outputs, and tool schemas.

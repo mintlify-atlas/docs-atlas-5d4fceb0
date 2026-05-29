@@ -1,7 +1,7 @@
 ---
-title: "Authenticating Composio API Requests"
+title: "Composio API Authentication — API Keys and Headers"
 sidebarTitle: "Authentication"
-description: "Authenticate Composio API calls with your project API key. Pass it as x-api-key header or as a Bearer token in the Authorization header."
+description: "Authenticate Composio REST API requests with your project API key via x-api-key header. Includes org-level auth, error responses, and SDK key handling."
 ---
 
 All Composio API requests require a project API key. Pass it in the `x-api-key` header or as a Bearer token in the `Authorization` header. Get your API key from the Composio dashboard at [composio.dev](https://composio.dev). Without a valid key every request returns `401 Unauthorized`.

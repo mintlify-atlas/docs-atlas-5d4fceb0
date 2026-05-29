@@ -1,7 +1,7 @@
 ---
-title: "Composio: AI Agent Tool Integration SDK"
+title: "Composio: AI Agent Tool Integration SDK for Developers"
 sidebarTitle: "Introduction"
-description: "Composio connects AI agents to 1000+ tools and APIs with managed auth, per-user sessions, MCP endpoints, and provider adapters for every major AI framework."
+description: "Composio connects AI agents to 1000+ tools and APIs with managed auth, per-user sessions, MCP endpoints, and adapters for every major AI framework."
 ---
 
 Composio is a multi-language SDK that gives AI agents access to over 1,000 third-party tool integrations — from GitHub and Gmail to Slack, Notion, and beyond — with built-in authentication, per-user session management, MCP endpoints, and adapters for every major AI framework. Instead of writing and maintaining OAuth flows, API wrappers, and tool schemas yourself, you point Composio at a toolkit and it handles the plumbing, so your agents can focus on reasoning and action.
@@ -51,7 +51,7 @@ Your Agent (OpenAI / Anthropic / LangChain / …)
   <Card title="TypeScript" icon="js" href="/reference/ts/composio">
     Install `@composio/core` and optional provider packages such as `@composio/openai`, `@composio/anthropic`, or `@composio/langchain`. Supports Node.js and browser environments with full TypeScript types.
   </Card>
-  <Card title="Python" icon="python" href="/how-composio-works">
+  <Card title="Python" icon="python" href="/reference/python/composio">
     Install `composio` and optional provider extras such as `composio-openai`, `composio-anthropic`, or `composio-langchain`. Requires Python 3.10 or later.
   </Card>
 </CardGroup>
@@ -67,7 +67,8 @@ Composio ships adapters for every major AI framework. Pass a provider instance t
 | Anthropic | ✅ | ✅ |
 | LangChain / LangGraph | ✅ | ✅ |
 | Vercel AI SDK | ✅ | — |
-| Google Gemini / ADK | ✅ | ✅ |
+| Google Gemini | ✅ | ✅ |
+| Google ADK | — | ✅ |
 | CrewAI | — | ✅ |
 | Mastra | ✅ | — |
 | LlamaIndex | ✅ | ✅ |

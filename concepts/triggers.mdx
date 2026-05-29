@@ -54,8 +54,8 @@ First, inspect the trigger type to see what configuration it requires. Then crea
 
     # Create the trigger for a user
     trigger = composio.triggers.create(
+        "GITHUB_COMMIT_EVENT",
         user_id="user_123",
-        slug="GITHUB_COMMIT_EVENT",
         trigger_config={
             "owner": "my-org",
             "repo": "my-repo",
@@ -285,7 +285,7 @@ List all available trigger types for a toolkit:
   </Tab>
   <Tab value="Python">
     ```python
-    trigger_types = composio.triggers.list_types(toolkits=["github"])
+    trigger_types = composio.triggers.list(toolkit_slugs=["github"])
 
     for t in trigger_types.items:
         print(t.slug, '-', t.description)

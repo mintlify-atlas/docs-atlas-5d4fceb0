@@ -128,7 +128,6 @@ console.log(result.data);
 # Programmatic semantic search — no agent required
 search_results = session.search(
     query="send an email with a file attachment",
-    toolkits=["gmail"],
 )
 
 print([t.slug for t in search_results.tools])

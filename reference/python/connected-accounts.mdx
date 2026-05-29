@@ -1,7 +1,7 @@
 ---
-title: "ConnectedAccounts — Composio Python SDK Reference"
+title: "Connected Accounts — Composio Python SDK Reference"
 sidebarTitle: "Connected Accounts"
-description: "composio.connected_accounts manages user OAuth connections and API key auth. Use link() to start OAuth flows and list() to query existing connections."
+description: "composio.connected_accounts manages OAuth connections and API key auth. Use link() to start flows, list() to query, and wait_for_connection() to confirm."
 ---
 
 `composio.connected_accounts` is the interface for managing user connections to third-party services. Use it to initiate OAuth flows, import existing tokens, and query or delete connections. A connected account ties an external user ID to credentials for a specific toolkit (e.g. GitHub, Gmail, Slack) and is required before tools can be executed on that user's behalf.

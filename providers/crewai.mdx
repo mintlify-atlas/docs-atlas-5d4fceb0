@@ -13,7 +13,7 @@ Composio's CrewAI provider wraps tools as `BaseTool` instances that CrewAI agent
 ## Installation
 
 ```bash
-pip install composio composio-crewai crewai
+pip install composio composio-crewai crewai langchain-openai
 ```
 
 Set your API keys in a `.env` file:
@@ -31,7 +31,9 @@ The following example creates a CrewAI agent with GitHub access and tasks it wit
 from crewai import Agent, Crew, Task
 from composio import Composio
 from composio_crewai import CrewAIProvider
+from langchain_openai import ChatOpenAI
 
+openai_client = ChatOpenAI(model="gpt-4o-mini")
 composio = Composio(provider=CrewAIProvider())
 
 # Tools are returned as a list of CrewAI BaseTool instances
@@ -46,7 +48,7 @@ agent = Agent(
     ),
     verbose=True,
     tools=tools,
-    llm="gpt-4o-mini",
+    llm=openai_client,
 )
 
 task = Task(
@@ -71,7 +73,9 @@ Give different agents in your crew different sets of Composio tools to create sp
 from crewai import Agent, Crew, Task
 from composio import Composio
 from composio_crewai import CrewAIProvider
+from langchain_openai import ChatOpenAI
 
+openai_client = ChatOpenAI(model="gpt-4o-mini")
 composio = Composio(provider=CrewAIProvider())
 
 # Each agent gets its own toolset
@@ -83,7 +87,7 @@ github_agent = Agent(
     goal="Manage GitHub repositories and issues",
     backstory="You are a GitHub expert who manages repositories.",
     tools=github_tools,
-    llm="gpt-4o-mini",
+    llm=openai_client,
 )
 
 email_agent = Agent(
@@ -91,7 +95,7 @@ email_agent = Agent(
     goal="Send email notifications about GitHub activity",
     backstory="You send email summaries of GitHub activity.",
     tools=gmail_tools,
-    llm="gpt-4o-mini",
+    llm=openai_client,
 )
 
 star_task = Task(

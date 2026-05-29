@@ -1,7 +1,7 @@
 ---
-title: "Composio CLI Command Reference"
+title: "Composio CLI Commands: Flags, Options, and Examples"
 sidebarTitle: "Commands"
-description: "Complete reference for all Composio CLI commands: login, whoami, search, execute, link, proxy, run, and more. Includes flags, options, and usage examples."
+description: "Full reference for Composio CLI commands: login, whoami, search, execute, link, proxy, run, upgrade, and more — with flags and usage examples."
 ---
 
 The Composio CLI exposes a set of commands for interacting with Composio from your terminal. Each command is designed to work standalone or as a tool surface for Claude Code agents. All commands require authentication (via `composio login`) unless noted otherwise, and support `--help` / `--help full` for additional detail.
@@ -326,6 +326,7 @@ composio link <toolkit> [options]
 |------|-------------|
 | `--no-wait` | Print the authorization URL and exit without waiting for confirmation |
 | `--list` | List existing active connected accounts for the toolkit instead of creating a new one |
+| `--alias <name>` | Assign an alias to the connected account. Required when creating a second account for the same toolkit. |
 
 **Examples**
 
@@ -341,6 +342,9 @@ composio link gmail --no-wait
 
 # List existing connected accounts for a toolkit
 composio link gmail --list
+
+# Connect a second Gmail account with an alias
+composio link gmail --alias work
 ```
 
 </Accordion>
@@ -407,12 +411,13 @@ composio run --file <path> [options] [-- <args>]
 
 | Global | Description |
 |--------|-------------|
-| `execute(slug, data?)` | Execute a Composio tool. Same behavior as `composio execute`. Returns parsed JSON. |
-| `search(query, options?)` | Search for tools. Same behavior as `composio search`. |
+| `execute(slug, data?)` | Execute a Composio tool. Same behavior as `composio execute`. Returns a result object with a `.prompt()` method for serialization. |
+| `search(query, options?)` | Search for tools. Same behavior as `composio search`. Returns a result object with a `.prompt()` method. |
 | `proxy(toolkit)` | Returns a `fetch`-like function authenticated with your connected account for that toolkit. |
 | `experimental_subAgent(prompt, options?)` | Spawn a sub-agent from the same agent family (Claude → Claude, Codex → Codex) with optional Zod structured output. |
-| `result.prompt()` | Prompt-safe serialization of a helper result, suitable for passing to `experimental_subAgent`. |
 | `z` | The `zod` library, for building structured output schemas. |
+
+Each result returned by `execute()` and `search()` has a `.prompt()` method that serializes it into a prompt-safe string, suitable for passing to `experimental_subAgent()`.
 
 **Flags**
 
@@ -496,14 +501,17 @@ composio --install-skill <skill> <client>
 
 | Argument | Description |
 |----------|-------------|
-| `skill` | The skill name to install (e.g. `composio-cli`) |
-| `client` | The AI client to install the skill for (e.g. `claude`) |
+| `skill` | The skill name to install (e.g. `composio-cli`). Optional — if omitted, the default skill for the target client is installed. |
+| `client` | The AI client to install the skill for. Supported values: `claude`, `codex`, `openclaw`. |
 
-**Example**
+**Examples**
 
 ```bash
 # Install the composio-cli skill for Claude Code
 composio --install-skill composio-cli claude
+
+# Install for OpenAI Codex
+composio --install-skill composio-cli codex
 ```
 
 This command is also run automatically by `composio login` and `composio upgrade`.

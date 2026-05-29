@@ -1,7 +1,7 @@
 ---
 title: "Custom Tools API — Composio TypeScript SDK Reference"
 sidebarTitle: "Custom Tools"
-description: "experimental_createTool() and experimental_createToolkit() define custom tools in TypeScript for use alongside Composio's built-in integrations."
+description: "experimental_createTool() and experimental_createToolkit() define custom TypeScript tools that work alongside Composio's built-in integrations in sessions."
 ---
 
 Custom tools let you define TypeScript functions that work side-by-side with Composio's built-in integrations. Your custom tools are passed to a tool router session and exposed to agents with the same interface as native Composio tools — no extra wiring required. You can call other Composio tools from inside a custom tool's `execute` function using the injected `SessionContext`.
@@ -16,7 +16,7 @@ Custom tools let you define TypeScript functions that work side-by-side with Com
 import {
   experimental_createTool,
   experimental_createToolkit,
-} from '@composio/core/experimental';
+} from '@composio/core';
 ```
 
 ## experimental_createTool()
@@ -165,11 +165,7 @@ const registeredToolkits = session.customToolkits();
 ## Example
 
 ```typescript
-import { Composio } from '@composio/core';
-import {
-  experimental_createTool,
-  experimental_createToolkit,
-} from '@composio/core/experimental';
+import { Composio, experimental_createTool, experimental_createToolkit } from '@composio/core';
 import { z } from 'zod';
 
 // ── 1. Define a standalone tool that extends Gmail auth ────────────────────

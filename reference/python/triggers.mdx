@@ -1,7 +1,7 @@
 ---
-title: "Triggers — Composio Python SDK Reference"
+title: "Python SDK Triggers Reference — composio.triggers API"
 sidebarTitle: "Triggers"
-description: "composio.triggers subscribes to real-time events from connected apps. React to Gmail messages, GitHub events, Slack activity, and other webhook-driven triggers."
+description: "composio.triggers streams real-time events from connected apps. Call subscribe() to listen and create() to set up persistent trigger instances."
 ---
 
 `composio.triggers` enables your application to react to real-time events from connected third-party services. Subscribe to a live push stream via `subscribe()`, create persistent trigger instances tied to specific connected accounts via `create()`, or verify and parse incoming webhook payloads via `verify_webhook()`. Each event arrives as a `TriggerEvent` TypedDict with normalized fields regardless of the underlying service.

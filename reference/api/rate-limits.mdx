@@ -1,7 +1,7 @@
 ---
-title: "Composio API Rate Limits and Quotas"
+title: "Composio API Rate Limits — Quotas and Retry Strategy"
 sidebarTitle: "Rate Limits"
-description: "Composio enforces rate limits on API requests. Learn about the limit headers, retry strategies, and how to stay within your plan's quotas."
+description: "Composio API rate limits by plan on a 10-minute window. Read limit headers, use exponential backoff on 429s, and configure SDK retries."
 ---
 
 Composio enforces rate limits on API requests to ensure fair use and platform stability. Limits are enforced per organization on a rolling 10-minute window. When you exceed a limit, the API returns a `429 Too Many Requests` status with headers that tell you exactly when to retry.

@@ -127,20 +127,19 @@ const fileData = await composio.files.upload({
 });
 
 console.log(fileData);
-// { url: "https://...", mimeType: "application/pdf", size: 12345 }
+// { name: "report.pdf", mimetype: "application/pdf", s3key: "files/..." }
 ```
 </Tab>
 <Tab value="Python">
 ```python
 # Python: use the session files mount for manual uploads
 file_data = session.experimental.files.upload(
-    file="/path/to/report.pdf",
-    tool_slug="GMAIL_SEND_EMAIL",
-    toolkit_slug="gmail",
+    "/path/to/report.pdf",
+    remote_path="report.pdf",
 )
 
 print(file_data)
-# { "url": "https://...", "mimeType": "application/pdf", "size": 12345 }
+# RemoteFile(name="report.pdf", url="https://...")
 ```
 </Tab>
 </Tabs>

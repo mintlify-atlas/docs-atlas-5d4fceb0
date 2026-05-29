@@ -84,10 +84,11 @@ Enable debug logging in the SDK to trace what the SDK is doing locally — sessi
 <Tabs groupId="language" items={["TypeScript", "Python"]}>
 <Tab value="TypeScript">
 ```typescript
-import { Composio, logger } from "@composio/core";
+import { Composio } from "@composio/core";
 
-// Set log level: 'debug' | 'info' | 'warn' | 'error' | 'silent'
-logger.setLevel("debug");
+// Set the log level via environment variable before initializing the SDK.
+// Valid values: 'debug' | 'info' | 'warn' | 'error' | 'silent'
+// COMPOSIO_LOG_LEVEL=debug
 
 const composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY });
 const session = await composio.create("user_123");

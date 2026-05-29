@@ -305,10 +305,12 @@ A connected account's `status` field reflects the current state of the credentia
 | `ACTIVE` | Credentials are valid and the account can be used |
 | `INITIATED` | The OAuth flow has been started but not completed |
 | `FAILED` | Authentication failed or was rejected by the provider |
-| `DISABLED` | The account has been manually disabled via the API |
+| `EXPIRED` | The credentials have expired and need to be refreshed |
+| `INACTIVE` | The account has been manually disabled via the API |
+| `REVOKED` | Access was revoked by the user or the provider |
 
 <Note>
-  Composio automatically refreshes OAuth tokens before they expire. A token expiry does not change the status to `FAILED` — you only see `FAILED` if the user explicitly revokes access or the provider rejects the credentials.
+  Composio automatically refreshes OAuth tokens before they expire. A token expiry does not normally change the status to `FAILED` — you only see `FAILED` if the provider explicitly rejects the credentials. Use `INACTIVE` to temporarily disable an account without removing it.
 </Note>
 
 You can enable or disable an account programmatically:
@@ -316,19 +318,19 @@ You can enable or disable an account programmatically:
 <Tabs items={["TypeScript", "Python"]}>
   <Tab value="TypeScript">
     ```typescript
-    // Disable a connected account
+    // Disable a connected account (sets status to INACTIVE)
     await composio.connectedAccounts.disable("ca_abc123");
 
-    // Re-enable it later
+    // Re-enable it later (restores to ACTIVE)
     await composio.connectedAccounts.enable("ca_abc123");
     ```
   </Tab>
   <Tab value="Python">
     ```python
-    # Disable a connected account
+    # Disable a connected account (sets status to INACTIVE)
     composio.connected_accounts.disable("ca_abc123")
 
-    # Re-enable it later
+    # Re-enable it later (restores to ACTIVE)
     composio.connected_accounts.enable("ca_abc123")
     ```
   </Tab>

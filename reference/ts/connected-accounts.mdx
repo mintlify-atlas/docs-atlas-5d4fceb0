@@ -1,7 +1,7 @@
 ---
 title: "ConnectedAccounts API — TypeScript SDK Reference"
 sidebarTitle: "Connected Accounts"
-description: "composio.connectedAccounts manages user connections to external apps. Use initiate() to start OAuth flows, list() to query connections, and waitForConnection() to confirm."
+description: "composio.connectedAccounts manages user connections to third-party services. Use link() for OAuth, list() to query, and waitForConnection() to poll status."
 ---
 
 The `ConnectedAccounts` class manages authenticated connections between your users and external services. A connected account stores the OAuth tokens, API keys, or other credentials that Composio needs to execute tools on a user's behalf. Each connected account belongs to a user ID and an auth config, and has a `status` that reflects the current authentication state.
@@ -234,6 +234,25 @@ composio.connectedAccounts.refresh(
 
 <ParamField body="options.validateCredentials" type="boolean" optional>
   Validate the refreshed credentials against the upstream API before returning.
+</ParamField>
+
+## connectedAccounts.update()
+
+Enable or disable a connected account. Accepts `{ enabled: boolean }`. A lower-level alternative to `enable()` / `disable()` when you want to pass the flag programmatically.
+
+```typescript
+composio.connectedAccounts.update(
+  nanoid: string,
+  params: { enabled: boolean }
+): Promise<ConnectedAccountUpdateStatusResponse>
+```
+
+<ParamField body="nanoid" type="string" required>
+  Unique identifier of the connected account.
+</ParamField>
+
+<ParamField body="params.enabled" type="boolean" required>
+  `true` to enable the account, `false` to disable it.
 </ParamField>
 
 ## connectedAccounts.enable() / disable()
